@@ -1,0 +1,30 @@
+{"id": "q01", "question": "What does the b parameter control in BM25?", "relevant": ["bm25"]}
+{"id": "q02", "question": "Why does BM25 saturate term frequency instead of counting occurrences linearly?", "relevant": ["bm25"]}
+{"id": "q03", "question": "How is inverse document frequency smoothed in the Okapi ranking function?", "relevant": ["bm25"]}
+{"id": "q04", "question": "Why are TF-IDF vectors L2 normalised before computing cosine similarity?", "relevant": ["tfidf"]}
+{"id": "q05", "question": "What is sublinear term frequency scaling and why use it?", "relevant": ["tfidf"]}
+{"id": "q06", "question": "Who introduced the idea of weighting terms by how rare they are across a collection?", "relevant": ["tfidf"]}
+{"id": "q07", "question": "How does reciprocal rank fusion combine two ranked lists?", "relevant": ["rank-fusion"]}
+{"id": "q08", "question": "Why is it hard to merge BM25 scores with cosine similarities directly?", "relevant": ["rank-fusion"]}
+{"id": "q09", "question": "What value is conventionally used for the RRF constant and what does it do?", "relevant": ["rank-fusion"]}
+{"id": "q10", "question": "Why do retrieval systems repeat sentences between adjacent passages?", "relevant": ["chunking"]}
+{"id": "q11", "question": "What happens if passages are cut too small or too large?", "relevant": ["chunking"]}
+{"id": "q12", "question": "What is the difference between hit@k and recall@k?", "relevant": ["evaluation"]}
+{"id": "q13", "question": "What does a mean reciprocal rank of 0.5 tell you?", "relevant": ["evaluation"]}
+{"id": "q14", "question": "Which metric supports graded relevance judgements with a positional discount?", "relevant": ["evaluation"]}
+{"id": "q15", "question": "Why does an ablation matter when reporting retrieval numbers?", "relevant": ["evaluation"]}
+{"id": "q16", "question": "What is a bi-encoder and why is it fast at query time?", "relevant": ["embeddings"]}
+{"id": "q17", "question": "Why do neural retrievers struggle with part numbers and version strings?", "relevant": ["embeddings"]}
+{"id": "q18", "question": "How does a hierarchical navigable small world graph search for neighbours?", "relevant": ["ann-search"]}
+{"id": "q19", "question": "What does product quantisation do to vectors?", "relevant": ["ann-search"]}
+{"id": "q20", "question": "What are the four stages of a retrieval augmented generation pipeline?", "relevant": ["rag"]}
+{"id": "q21", "question": "Why can updating knowledge by re-indexing beat retraining a model?", "relevant": ["rag"]}
+{"id": "q22", "question": "How does a cross encoder differ from encoding query and passage separately?", "relevant": ["reranking"]}
+{"id": "q23", "question": "How do you stop a result list from being five paraphrases of the same sentence?", "relevant": ["reranking"]}
+{"id": "q24", "question": "What is pseudo relevance feedback and when does it hurt?", "relevant": ["query-processing"]}
+{"id": "q25", "question": "Why must follow up questions be rewritten before they are sent to a retriever?", "relevant": ["query-processing"]}
+{"id": "q26", "question": "What is the difference between a faithful answer and a correct one?", "relevant": ["citations"]}
+{"id": "q27", "question": "Why can an extractive answerer not hallucinate?", "relevant": ["citations"]}
+{"id": "q28", "question": "What is a posting list and what does it store?", "relevant": ["inverted-index"]}
+{"id": "q29", "question": "How are document identifiers compressed inside an index?", "relevant": ["inverted-index"]}
+{"id": "q30", "question": "How do search engines handle deletions without rewriting the whole index?", "relevant": ["inverted-index"]}
