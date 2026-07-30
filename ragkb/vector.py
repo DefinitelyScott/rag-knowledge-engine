@@ -67,6 +67,21 @@ class TfidfIndex:
             weight * document.get(term, 0.0) for term, weight in query_vector.items()
         )
 
+    def pairwise_similarity(self, left: int, right: int) -> float:
+        """Cosine similarity between two indexed documents.
+
+        The stored vectors are already L2-normalised, so the dot product is the
+        cosine directly. Values are in [0, 1] because TF-IDF weights are
+        non-negative, which is what lets MMR subtract this from a normalised
+        relevance score.
+        """
+        if left == right:
+            return 1.0
+        first, second = self.vectors[left], self.vectors[right]
+        if len(first) > len(second):
+            first, second = second, first
+        return sum(weight * second.get(term, 0.0) for term, weight in first.items())
+
     def search(self, query_tokens: Sequence[str], k: int = 10) -> List[Tuple[int, float]]:
         query_vector = self.vectorize_query(query_tokens)
         if not query_vector:

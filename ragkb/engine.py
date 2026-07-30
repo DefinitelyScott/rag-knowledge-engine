@@ -21,6 +21,9 @@ class EngineConfig:
     overlap_tokens: int = 30
     rrf_k: int = 60
     candidates: int = 25
+    #: MMR relevance/diversity trade-off. ``None`` disables re-ranking and
+    #: keeps the pure fusion ordering; 0.7 is a reasonable starting point.
+    mmr_lambda: Optional[float] = None
 
 
 class RAGEngine:
@@ -43,7 +46,11 @@ class RAGEngine:
                     overlap_tokens=self.config.overlap_tokens,
                 )
             )
-        self.retriever = HybridRetriever(self.chunks, rrf_k=self.config.rrf_k)
+        self.retriever = HybridRetriever(
+            self.chunks,
+            rrf_k=self.config.rrf_k,
+            mmr_lambda=self.config.mmr_lambda,
+        )
 
     @classmethod
     def from_corpus(
@@ -64,10 +71,18 @@ class RAGEngine:
         return cls(documents, config=config)
 
     def search(
-        self, query: str, k: int = 5, method: str = "hybrid"
+        self,
+        query: str,
+        k: int = 5,
+        method: str = "hybrid",
+        mmr_lambda: Optional[float] = None,
     ) -> List[RetrievalResult]:
         return self.retriever.search(
-            query, k=k, method=method, candidates=self.config.candidates
+            query,
+            k=k,
+            method=method,
+            candidates=self.config.candidates,
+            mmr_lambda=mmr_lambda,
         )
 
     def answer(
@@ -81,11 +96,17 @@ class RAGEngine:
         return (answerer or ExtractiveAnswerer()).answer(query, results)
 
     def ranked_doc_ids(
-        self, query: str, k: int = 5, method: str = "hybrid"
+        self,
+        query: str,
+        k: int = 5,
+        method: str = "hybrid",
+        mmr_lambda: Optional[float] = None,
     ) -> List[str]:
         """Deduplicated document ids in rank order - the unit evaluation uses."""
         ordered: List[str] = []
-        for result in self.search(query, k=max(k * 4, k), method=method):
+        for result in self.search(
+            query, k=max(k * 4, k), method=method, mmr_lambda=mmr_lambda
+        ):
             if result.doc_id not in ordered:
                 ordered.append(result.doc_id)
             if len(ordered) >= k:

@@ -7,9 +7,10 @@ every retrieval and scoring decision is inspectable end to end.
 from .text import Chunk, chunk_document, split_sentences, tokenize
 from .bm25 import BM25Index
 from .vector import TfidfIndex
+from .rerank import mean_pairwise_similarity, mmr_rerank
 from .retriever import HybridRetriever, RetrievalResult
 from .answerer import Answer, ExtractiveAnswerer, OpenAIAnswerer
-from .engine import RAGEngine
+from .engine import EngineConfig, RAGEngine
 
 __all__ = [
     "Chunk",
@@ -20,9 +21,12 @@ __all__ = [
     "TfidfIndex",
     "HybridRetriever",
     "RetrievalResult",
+    "mmr_rerank",
+    "mean_pairwise_similarity",
     "Answer",
     "ExtractiveAnswerer",
     "OpenAIAnswerer",
+    "EngineConfig",
     "RAGEngine",
 ]
 
