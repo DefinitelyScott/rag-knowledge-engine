@@ -1,6 +1,6 @@
 import pytest
 
-from ragkb.text import chunk_document, split_sentences, tokenize
+from ragkb.text import chunk_document, is_heading, split_sentences, tokenize
 
 
 def test_tokenize_lowercases_and_splits_on_punctuation():
@@ -70,3 +70,33 @@ def test_empty_document_yields_no_chunks():
 def test_invalid_chunk_parameters_raise(target, overlap):
     with pytest.raises(ValueError):
         chunk_document("doc", "Some text here.", target_tokens=target, overlap_tokens=overlap)
+
+
+def test_markdown_heading_is_a_sentence_boundary():
+    text = "# Chunking strategies\nA chunk is the unit of retrieval."
+    assert split_sentences(text) == [
+        "# Chunking strategies",
+        "A chunk is the unit of retrieval.",
+    ]
+
+
+def test_is_heading_recognises_atx_headings_only():
+    assert is_heading("## Rank fusion")
+    assert is_heading("   # Indented but still a heading")
+    assert not is_heading("C# is a language.")
+    assert not is_heading("A sentence about # symbols.")
+
+
+def test_chunk_text_round_trips_through_split_sentences():
+    # Answer attribution depends on this: a sentence taken out of a chunk has
+    # to be findable in that chunk's text exactly as it was taken.
+    text = (
+        "# Rank fusion\n"
+        "Two retrievers disagree. Their scores are not comparable.\n\n"
+        "## Reciprocal rank fusion\n"
+        "Each list contributes one over k plus rank."
+    )
+    sentences = split_sentences(text)
+    for chunk in chunk_document("doc", text, target_tokens=12, overlap_tokens=4):
+        recovered = split_sentences(chunk.text)
+        assert recovered == sentences[chunk.sentence_start : chunk.sentence_end + 1]

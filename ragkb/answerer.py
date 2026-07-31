@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
 from .retriever import RetrievalResult
-from .text import STOPWORDS, split_sentences, tokenize
+from .text import STOPWORDS, is_heading, split_sentences, tokenize
 
 
 @dataclass
@@ -68,6 +68,11 @@ class ExtractiveAnswerer:
             # matters when two sentences cover the query equally well.
             rank_weight = 1.0 / (1.0 + position)
             for sentence in split_sentences(result.text):
+                # A heading is short and dense in query terms, so it scores
+                # well and says nothing. Skipping it costs no information:
+                # whatever the section is about, the sentences under it state.
+                if is_heading(sentence):
+                    continue
                 tokens = set(tokenize(sentence))
                 if not tokens:
                     continue
@@ -108,7 +113,11 @@ class ExtractiveAnswerer:
                 break
 
         return Answer(
-            text=" ".join(selected),
+            # Joined on newlines so that splitting the answer back into
+            # sentences returns exactly these sentences. That round-trip is
+            # what ragkb.faithfulness relies on to attribute each sentence to
+            # the passage it came from.
+            text="\n".join(selected),
             citations=citations,
             method="extractive",
             supporting_chunks=chunk_ids,

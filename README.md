@@ -124,6 +124,50 @@ unchanged and MRR gives up 0.004. Below that, accuracy starts paying for
 diversity in a way this corpus does not justify, so re-ranking stays **off by
 default** and the trade-off is a flag rather than a hidden constant.
 
+### Faithfulness: does the answer stay inside the passages?
+
+Retrieval metrics stop at the passage. They cannot see the failure users
+actually notice: an answer that asserts something the retrieved text does not
+support, or that cites a document which contributed nothing.
+`ragkb/faithfulness.py` measures the last step, offline and without labels:
+
+- **sentence grounding** - share of answer sentences found verbatim in a
+  retrieved passage. The extractive answerer should score 1.000 by
+  construction, so this is a regression guard, not a quality score.
+- **token grounding** - share of content tokens present in the context. The
+  lenient measure, and the one that still means something for a paraphrasing
+  LLM answerer: it is what catches an invented name, number, or acronym.
+- **citation precision** - share of cited documents that actually contributed a
+  sentence. An answerer that cites everything it was handed fails here, which
+  is the point: a citation list that is not selective is not evidence.
+- **citation recall** - share of grounded sentences whose source is cited.
+
+```bash
+python evals/faithfulness_eval.py
+```
+
+| k | sentence grounding | token grounding | citation precision | citation recall | cited gold |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 1.000 | 1.000 | 1.000 | 1.000 | 0.900 |
+| 4 | 1.000 | 1.000 | 1.000 | 1.000 | 0.900 |
+| 5 | 1.000 | 1.000 | 1.000 | 1.000 | 0.900 |
+
+`cited gold` is the only column that uses the labels: the share of answers
+citing a document the gold set marks relevant. It sits at 0.900 because
+retrieval misses some questions, not because the answerer is unfaithful - the
+two failures are worth keeping apart.
+
+The measure earned its place on the first run by failing. Sentence grounding
+came back at 0.967 rather than 1.000, and the cause was real: markdown headings
+carry no terminal punctuation, so the sentence splitter glued each heading to
+the sentence after it. That pseudo-sentence existed nowhere in the corpus, and
+it was being selected into answers, where it could not be traced back to any
+passage. Headings are now hard sentence boundaries, chunks join their sentences
+on newlines so a chunk round-trips through the splitter, and the extractive
+answerer skips heading-only sentences - a heading names a section, it does not
+assert anything. Retrieval metrics are unchanged; sentence grounding and
+citation precision are now 1.000.
+
 ## Design notes
 
 - **Sentence-aware chunking with overlap.** Chunks never end mid-sentence, and
@@ -146,10 +190,10 @@ default** and the trade-off is a flag rather than a hidden constant.
 ## Tests
 
 ```bash
-pytest -q      # 71 tests
+pytest -q      # 86 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
 normalisation, TF-IDF normalisation, RRF scoring shape, every metric, the CLI,
-MMR selection order and its redundancy invariants, and an end-to-end pass
-over the real corpus and gold set.
+MMR selection order and its redundancy invariants, answer grounding and
+citation accuracy, and an end-to-end pass over the real corpus and gold set.

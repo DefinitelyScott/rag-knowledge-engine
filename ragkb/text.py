@@ -16,6 +16,12 @@ from typing import Dict, List, Sequence
 _TOKEN_RE = re.compile(r"[a-z0-9]+(?:['-][a-z0-9]+)*")
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
 _PARAGRAPH_RE = re.compile(r"\n\s*\n")
+#: A markdown ATX heading line. Headings carry no terminal punctuation, so the
+#: sentence-boundary regex above cannot see the end of one: without this, a
+#: heading is glued to the first sentence of the section it introduces, and the
+#: resulting pseudo-sentence exists nowhere in the source. That leaks into
+#: extractive answers and makes them impossible to trace back to a passage.
+_HEADING_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,6}[ \t]+[^\n]*$")
 
 #: A small, explicit English stop list. Kept short on purpose: BM25 already
 #: discounts frequent terms through IDF, so aggressive removal mostly costs
@@ -45,10 +51,33 @@ def tokenize(text: str, remove_stopwords: bool = False) -> List[str]:
     return tokens
 
 
+def _isolate_headings(text: str) -> str:
+    """Surround markdown heading lines with blank lines.
+
+    Makes every heading a paragraph of its own so the paragraph split below
+    treats it as a hard boundary.
+    """
+    return _HEADING_RE.sub(lambda match: "\n\n{}\n\n".format(match.group(0)), text)
+
+
+def is_heading(text: str) -> bool:
+    """True for a markdown heading line such as ``## Chunking``.
+
+    A heading names a section; it does not assert anything. Retrieval still
+    indexes it - the words are a useful signal about what the section covers -
+    but an extractive answer built out of headings answers nothing.
+    """
+    return bool(_HEADING_RE.fullmatch(text.strip()))
+
+
 def split_sentences(text: str) -> List[str]:
-    """Split text into sentences, treating blank lines as hard boundaries."""
+    """Split text into sentences.
+
+    Blank lines and markdown headings are hard boundaries; within a paragraph,
+    sentences end at ``.``, ``!`` or ``?`` followed by a capitalised token.
+    """
     sentences: List[str] = []
-    for paragraph in _PARAGRAPH_RE.split(normalize(text)):
+    for paragraph in _PARAGRAPH_RE.split(_isolate_headings(normalize(text))):
         paragraph = paragraph.strip()
         if not paragraph:
             continue
@@ -111,7 +140,12 @@ def chunk_document(
     current_tokens = 0
 
     def emit(first: int, last: int) -> None:
-        body = " ".join(sentences[first : last + 1])
+        # Newlines, not spaces: joining with a space would run a heading into
+        # the sentence after it, and re-splitting the chunk would then produce
+        # a sentence that appears nowhere in the source. Keeping the break
+        # makes split_sentences(chunk.text) recover exactly these sentences,
+        # which is what lets an answer be traced back to a passage.
+        body = "\n".join(sentences[first : last + 1])
         chunks.append(
             Chunk(
                 doc_id=doc_id,
