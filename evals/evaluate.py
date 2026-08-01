@@ -5,6 +5,13 @@ table so that the hybrid retriever has to justify itself against its own
 components. Document-level relevance is used: a result counts as a hit when the
 retrieved chunk came from a document listed as relevant for that question.
 
+The gold set is split by difficulty and each slice is reported separately. The
+easy slice is lexically overlapping - the wording of the question shares terms
+with the target document - and it saturates, which hides differences between
+methods. The hard slice deliberately avoids the target document's vocabulary
+and includes questions whose answer is spread over two documents, so recall@k
+stops being a copy of hit@k and the fusion has something to prove.
+
 A second table sweeps the MMR diversity trade-off. Accuracy metrics alone cannot
 see redundancy - a top-5 made of five paraphrases of one passage scores exactly
 as well as five complementary ones - so that table also reports the mean
@@ -38,10 +45,29 @@ def load_gold(path: str) -> List[Dict]:
         for line in handle:
             line = line.strip()
             if line:
-                records.append(json.loads(line))
+                record = json.loads(line)
+                record.setdefault("difficulty", "easy")
+                records.append(record)
     if not records:
         raise ValueError("gold set is empty: {}".format(path))
     return records
+
+
+def slices(gold: Sequence[Dict]) -> List[tuple]:
+    """(label, records) for the whole set and for each difficulty present."""
+    out = [("all", list(gold))]
+    for level in ("easy", "hard"):
+        subset = [record for record in gold if record.get("difficulty") == level]
+        if subset:
+            out.append((level, subset))
+    return out
+
+
+def describe(gold: Sequence[Dict]) -> str:
+    multi = sum(1 for record in gold if len(record["relevant"]) > 1)
+    return "{} questions, {} with more than one relevant document".format(
+        len(gold), multi
+    )
 
 
 def evaluate_method(
@@ -142,12 +168,15 @@ def main(argv=None) -> int:
             stats["mean_chunk_tokens"],
         )
     )
-    print("questions: {}   k={}\n".format(len(gold), args.k))
+    print("gold set: {}   k={}".format(describe(gold), args.k))
 
-    reports = {
-        method: evaluate_method(engine, gold, method, args.k) for method in METHODS
-    }
-    print(format_table(reports))
+    for label, subset in slices(gold):
+        reports = {
+            method: evaluate_method(engine, subset, method, args.k)
+            for method in METHODS
+        }
+        print("\n{} ({})".format(label, describe(subset)))
+        print(format_table(reports))
 
     lambdas = [value for value in args.mmr_lambdas.split(",") if value.strip()]
     if lambdas:
@@ -167,9 +196,22 @@ def main(argv=None) -> int:
         if not set(engine.ranked_doc_ids(record["question"], k=args.k))
         & set(record["relevant"])
     ]
+    partial = [
+        record["id"]
+        for record in gold
+        if len(record["relevant"]) > 1
+        and not set(record["relevant"])
+        <= set(engine.ranked_doc_ids(record["question"], k=args.k))
+        and record["id"] not in failures
+    ]
     print(
         "\nhybrid misses at k={}: {}".format(
             args.k, ", ".join(failures) if failures else "none"
+        )
+    )
+    print(
+        "hybrid partial recall at k={} (found some but not all): {}".format(
+            args.k, ", ".join(partial) if partial else "none"
         )
     )
     return 0

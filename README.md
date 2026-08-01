@@ -60,8 +60,8 @@ BM25 ranked list                          TF-IDF cosine ranked list
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `--mmr` |
 
 `corpus/` holds the sample knowledge base (twelve documents on information
-retrieval). `evals/gold.jsonl` holds thirty labelled questions with the
-documents that answer them.
+retrieval). `evals/gold.jsonl` holds forty-eight labelled questions with the
+documents that answer them, split into an `easy` and a `hard` slice.
 
 ## Evaluation
 
@@ -71,7 +71,16 @@ pytest -q
 ```
 
 Current numbers on the bundled corpus and gold set (12 documents, 47 chunks,
-30 questions, k=5, document-level relevance):
+48 questions, k=5, document-level relevance).
+
+The gold set is split by difficulty. The `easy` slice is the original thirty
+questions, whose wording shares vocabulary with the target document. The `hard`
+slice is eighteen questions written to avoid the target document's own terms -
+"if someone writes automobiles but the page only ever says cars" instead of
+"vocabulary mismatch" - and eight of them are answered by two documents rather
+than one.
+
+**easy (30 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | MRR |
 | --- | --- | --- | --- | --- | --- |
@@ -79,13 +88,30 @@ Current numbers on the bundled corpus and gold set (12 documents, 47 chunks,
 | bm25 | 0.800 | 0.933 | 0.967 | 0.967 | 0.868 |
 | vector | 0.833 | 0.933 | 0.967 | 0.967 | 0.886 |
 
-Reported honestly: on this corpus the hybrid retriever does **not** beat
-TF-IDF alone. The corpus is small and each document uses a distinctive
-vocabulary, so BM25 and TF-IDF largely agree, and RRF's rank-only view discards
-the score margin that TF-IDF was using to break ties correctly. Hybrid
-retrieval earns its keep when the two retrievers disagree; making them disagree
-usefully here means a larger, more paraphrase-heavy corpus and harder
-questions. That is the next thing to fix, not a number to tune away.
+**hard (18 questions, 8 with two relevant documents)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@3 | recall@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.444 | 0.833 | 0.889 | 0.750 | 0.778 | 0.606 |
+| bm25 | 0.444 | 0.778 | 0.889 | 0.694 | 0.778 | 0.596 |
+| vector | 0.444 | 0.833 | 0.889 | 0.722 | 0.778 | 0.606 |
+
+The easy slice was saturated and hid everything. Every question on it has
+exactly one relevant document, which makes recall@k numerically identical to
+hit@k - the column was decoration. hit@5 sat at 0.967 for all three methods, so
+no retrieval change could move it in either direction.
+
+The hard slice restores headroom: hit@1 falls from 0.800 to 0.444 and MRR from
+0.869 to 0.606, and recall@k finally diverges from hit@k because a question
+answered by two documents can be half-satisfied. Four questions land in exactly
+that state at k=5, which is a failure mode the old set could not express at all.
+
+Reported honestly: hybrid still does not dominate. It beats BM25 on the hard
+slice at rank three (hit@3 0.833 vs 0.778, recall@3 0.750 vs 0.694) and ties
+TF-IDF on MRR, so fusion buys a little ordering quality on paraphrased
+questions and nothing at k=5. The corpus is still twelve documents with
+distinctive per-document vocabulary; that is the remaining reason the two
+retrievers agree too often, and it is a corpus problem, not a tuning problem.
 
 ### Diversity: MMR re-ranking
 
@@ -105,22 +131,24 @@ meaningful for RRF scores near 1/60 and raw BM25 scores alike.
 python -m ragkb.cli --mmr 0.7 search "how does BM25 saturate term frequency"
 ```
 
-Sweeping lambda over the same 30 questions at k=5 (`redundancy` is the mean
+Sweeping lambda over all 48 questions at k=5 (`redundancy` is the mean
 pairwise cosine within a result set; `distinct` is how many documents it spans):
 
 | lambda | hit@1 | hit@5 | MRR | redundancy | distinct |
 | --- | --- | --- | --- | --- | --- |
-| off | 0.800 | 0.967 | 0.869 | 0.147 | 3.53 |
-| 1.0 | 0.800 | 0.967 | 0.869 | 0.147 | 3.53 |
-| 0.9 | 0.800 | 0.967 | 0.867 | 0.144 | 3.60 |
-| 0.7 | 0.800 | 0.967 | 0.865 | 0.125 | 4.10 |
-| 0.5 | 0.800 | 0.967 | 0.859 | 0.106 | 4.47 |
-| 0.3 | 0.800 | 0.967 | 0.854 | 0.095 | 4.63 |
+| off | 0.667 | 0.938 | 0.771 | 0.142 | 3.67 |
+| 1.0 | 0.667 | 0.938 | 0.771 | 0.142 | 3.67 |
+| 0.9 | 0.667 | 0.938 | 0.769 | 0.140 | 3.73 |
+| 0.7 | 0.667 | 0.938 | 0.767 | 0.119 | 4.21 |
+| 0.5 | 0.667 | 0.938 | 0.758 | 0.104 | 4.50 |
+| 0.3 | 0.667 | 0.938 | 0.754 | 0.094 | 4.69 |
 
 `lambda = 1.0` reproduces the unmodified ranking exactly, which is the cheapest
 available correctness check on the implementation. At `lambda = 0.7` redundancy
-falls 15% and the result set covers 16% more documents while hit@1 and hit@5 are
-unchanged and MRR gives up 0.004. Below that, accuracy starts paying for
+falls 16% and the result set covers 15% more documents while hit@1 and hit@5 are
+unchanged and MRR gives up 0.004. The harder questions did not change that
+conclusion, which is mildly reassuring: the trade-off curve has the same shape
+on a question set the retriever finds materially harder. Below that, accuracy starts paying for
 diversity in a way this corpus does not justify, so re-ranking stays **off by
 default** and the trade-off is a flag rather than a hidden constant.
 
@@ -148,14 +176,17 @@ python evals/faithfulness_eval.py
 
 | k | sentence grounding | token grounding | citation precision | citation recall | cited gold |
 | --- | --- | --- | --- | --- | --- |
-| 3 | 1.000 | 1.000 | 1.000 | 1.000 | 0.900 |
-| 4 | 1.000 | 1.000 | 1.000 | 1.000 | 0.900 |
-| 5 | 1.000 | 1.000 | 1.000 | 1.000 | 0.900 |
+| 3 | 1.000 | 1.000 | 1.000 | 1.000 | 0.812 |
+| 4 | 1.000 | 1.000 | 1.000 | 1.000 | 0.792 |
+| 5 | 1.000 | 1.000 | 1.000 | 1.000 | 0.792 |
 
 `cited gold` is the only column that uses the labels: the share of answers
-citing a document the gold set marks relevant. It sits at 0.900 because
-retrieval misses some questions, not because the answerer is unfaithful - the
-two failures are worth keeping apart.
+citing a document the gold set marks relevant. It fell from 0.900 to 0.792 when
+the hard questions were added, and that is the correct direction: retrieval
+misses more of them, so more answers are built from the wrong passages. The
+grounding and citation columns stayed at 1.000 throughout, which is the
+distinction the measure exists to draw - the answerer is not less faithful, it
+is being handed worse evidence.
 
 The measure earned its place on the first run by failing. Sentence grounding
 came back at 0.967 rather than 1.000, and the cause was real: markdown headings
@@ -190,10 +221,11 @@ citation precision are now 1.000.
 ## Tests
 
 ```bash
-pytest -q      # 86 tests
+pytest -q      # 95 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
 normalisation, TF-IDF normalisation, RRF scoring shape, every metric, the CLI,
 MMR selection order and its redundancy invariants, answer grounding and
-citation accuracy, and an end-to-end pass over the real corpus and gold set.
+citation accuracy, gold-set integrity, and an end-to-end pass over the real
+corpus and gold set.
