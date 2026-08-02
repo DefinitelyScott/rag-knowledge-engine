@@ -18,6 +18,7 @@ cd rag-knowledge-engine
 python -m ragkb.cli stats
 python -m ragkb.cli search "how does reciprocal rank fusion work" -k 3
 python -m ragkb.cli ask "what does the b parameter control in bm25"
+python -m ragkb.cli --expand 5 search "what breaks when a query and a page use different words"
 ```
 
 `ask` uses the offline extractive answerer by default. Passing `--llm` switches
@@ -30,8 +31,8 @@ it.
 ```
 question
    |
-   +-- tokenize ------------------------------------+
-   |                                                |
+   +-- tokenize --> optional PRF expansion ---------+
+   |    (borrow terms from a first retrieval pass)  |
    v                                                v
 BM25 ranked list                          TF-IDF cosine ranked list
    |                                                |
@@ -53,11 +54,12 @@ BM25 ranked list                          TF-IDF cosine ranked list
 | `ragkb/bm25.py` | Okapi BM25 with configurable `k1` and `b` |
 | `ragkb/vector.py` | sparse TF-IDF vectors, L2-normalised, cosine similarity |
 | `ragkb/retriever.py` | hybrid retriever, reciprocal rank fusion |
+| `ragkb/expansion.py` | pseudo-relevance feedback query expansion (RM3-style) |
 | `ragkb/rerank.py` | Maximal Marginal Relevance re-ranking, redundancy diagnostic |
 | `ragkb/answerer.py` | extractive answerer (offline) and OpenAI answerer, both cite |
 | `ragkb/engine.py` | corpus loading, chunking, indexing, question answering |
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, MRR |
-| `ragkb/cli.py` | `stats`, `search`, `ask`, `--mmr` |
+| `ragkb/cli.py` | `stats`, `search`, `ask`, `--mmr`, `--expand` |
 
 `corpus/` holds the sample knowledge base (twelve documents on information
 retrieval). `evals/gold.jsonl` holds forty-eight labelled questions with the
@@ -112,6 +114,74 @@ TF-IDF on MRR, so fusion buys a little ordering quality on paraphrased
 questions and nothing at k=5. The corpus is still twelve documents with
 distinctive per-document vocabulary; that is the remaining reason the two
 retrievers agree too often, and it is a corpus problem, not a tuning problem.
+
+### Query expansion: borrowing the words the question did not use
+
+Neither retriever can match a term the query never contains, and fusing two
+retrievers that both missed the same synonym changes nothing - which is why the
+hard slice hurts hybrid and BM25 by almost exactly the same amount. Pseudo-
+relevance feedback is the classical fix that needs no embedding model: assume
+the top few results of a first pass are relevant, read the terms they actually
+use, and retrieve again with those terms added.
+
+`ragkb/expansion.py` implements the RM3 form (Lavrenko & Croft, SIGIR 2001):
+`alpha * P(t|query) + (1 - alpha) * P(t|feedback)`. Candidate terms are scored
+by their frequency in the feedback set multiplied by IDF, so a term has to be
+frequent *there specifically* rather than frequent everywhere. Weighting a query
+by repeating tokens is exactly right for BM25 and only approximately right for
+TF-IDF, so both indexes gained a real weighted-query entry point
+(`search_weighted`) instead of that trick.
+
+```bash
+python -m ragkb.cli --expand 5 search "if someone writes automobiles but the page only says cars"
+# expanded with: b (0.045), scores (0.041), probabilistic (0.039), robertson (0.039), ...
+```
+
+Sweeping terms and `alpha` with five feedback documents, at k=5:
+
+**easy (30 questions)**
+
+| terms | hit@1 | hit@3 | hit@5 | recall@5 | MRR |
+| --- | --- | --- | --- | --- | --- |
+| off | 0.800 | 0.933 | 0.967 | 0.967 | 0.869 |
+| 5, a=1.0 | 0.800 | 0.933 | 0.967 | 0.967 | 0.869 |
+| 3, a=0.9 | 0.700 | 0.967 | 0.967 | 0.967 | 0.811 |
+| 5, a=0.8 | 0.667 | 0.933 | 0.967 | 0.967 | 0.797 |
+| 5, a=0.7 | 0.600 | 0.933 | 1.000 | 1.000 | 0.771 |
+
+**hard (18 questions, 8 with two relevant documents)**
+
+| terms | hit@1 | hit@3 | hit@5 | recall@5 | MRR |
+| --- | --- | --- | --- | --- | --- |
+| off | 0.444 | 0.833 | 0.889 | 0.778 | 0.606 |
+| 5, a=1.0 | 0.444 | 0.833 | 0.889 | 0.778 | 0.606 |
+| 3, a=0.9 | 0.500 | 0.833 | 0.889 | 0.806 | 0.644 |
+| 5, a=0.8 | 0.500 | 0.778 | 0.944 | 0.861 | 0.650 |
+| 5, a=0.7 | 0.444 | 0.778 | 0.944 | 0.861 | 0.619 |
+
+`alpha = 1.0` puts all the weight on the original query, so nothing is borrowed
+and the ranking has to be identical to the unexpanded one. It is, on every one
+of the 48 questions - that row and the test behind it are the correctness check
+on this whole path, the same job `lambda = 1.0` does for MMR.
+
+The split is the result. On the hard slice, five borrowed terms at `alpha = 0.8`
+lift recall@5 from 0.778 to 0.861 and hit@5 from 0.889 to 0.944, and MRR rises
+0.044; h18 ("why can what a system knows be changed without any training at
+all?") goes from a complete miss at k=5 to a hit, because the feedback pass
+borrowed *grounding*, *faithfulness* and *relevant* from passages the plain
+question could not reach. On the easy slice the same setting costs four questions at rank
+one and 0.072 of MRR while moving recall not at all - those questions already
+shared vocabulary with their target, so every borrowed term is noise.
+
+That is the textbook pseudo-relevance feedback trade-off, and this corpus
+reproduces it cleanly: expansion buys reach on paraphrased questions and pays
+for it in early precision on literal ones. It is **off by default** and exposed
+as `--expand`, because a mixed question set is a net loss on MRR and the right
+setting depends on whether the caller wants a top-1 answer or a k-passage
+context. Two cautions on reading the tables: the hard slice is 18 questions, so
+a 0.056 step is one question; and the feedback documents come from the same
+retriever being evaluated, so when the first pass is wrong, expansion
+confidently makes it wronger.
 
 ### Diversity: MMR re-ranking
 
@@ -217,15 +287,19 @@ citation precision are now 1.000.
 - **Diversity measured, not assumed.** MMR ships with a redundancy read-out and
   a lambda sweep rather than a tuned default, because "more diverse" is only
   worth having if you can show what it cost.
+- **Optional machinery has an identity setting.** MMR at `lambda = 1.0` and
+  expansion at `alpha = 1.0` both have to reproduce the plain ranking exactly.
+  That is the cheapest correctness check available for a component whose output
+  is otherwise only judged by a metric that moves for many reasons.
 
 ## Tests
 
 ```bash
-pytest -q      # 95 tests
+pytest -q      # 121 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
 normalisation, TF-IDF normalisation, RRF scoring shape, every metric, the CLI,
-MMR selection order and its redundancy invariants, answer grounding and
-citation accuracy, gold-set integrity, and an end-to-end pass over the real
-corpus and gold set.
+MMR selection order and its redundancy invariants, the query-expansion model and
+its weighted-query interfaces, answer grounding and citation accuracy, gold-set
+integrity, and an end-to-end pass over the real corpus and gold set.

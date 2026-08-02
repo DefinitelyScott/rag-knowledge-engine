@@ -9,8 +9,20 @@ from typing import List, Optional
 
 from .answerer import ExtractiveAnswerer, OpenAIAnswerer
 from .engine import EngineConfig, RAGEngine
+from .expansion import ExpansionConfig
+from .text import tokenize
 
 DEFAULT_CORPUS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "corpus")
+
+
+def _expansion_config(args) -> Optional[ExpansionConfig]:
+    if args.expand is None:
+        return None
+    return ExpansionConfig(
+        feedback_docs=args.expand_docs,
+        feedback_terms=args.expand,
+        original_weight=args.expand_weight,
+    )
 
 
 def _build_engine(args) -> RAGEngine:
@@ -19,12 +31,33 @@ def _build_engine(args) -> RAGEngine:
         overlap_tokens=args.overlap_tokens,
         rrf_k=args.rrf_k,
         mmr_lambda=args.mmr,
+        expansion=_expansion_config(args),
     )
     return RAGEngine.from_corpus(args.corpus, config=config)
 
 
+def _print_expansion(engine: RAGEngine, query: str, method: str) -> None:
+    """Show which terms the feedback pass borrowed, heaviest first."""
+    model = engine.retriever.expansion_model(query, method=method)
+    if not model:
+        return
+    original = set(tokenize(query))
+    added = [
+        (term, weight) for term, weight in model.items() if term not in original
+    ]
+    if not added:
+        return
+    added.sort(key=lambda pair: (-pair[1], pair[0]))
+    print(
+        "expanded with: {}".format(
+            ", ".join("{} ({:.3f})".format(term, weight) for term, weight in added)
+        )
+    )
+
+
 def _cmd_search(args) -> int:
     engine = _build_engine(args)
+    _print_expansion(engine, args.query, args.method)
     results = engine.search(args.query, k=args.k, method=args.method)
     if not results:
         print("No matching passages.")
@@ -71,6 +104,33 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "re-rank results with Maximal Marginal Relevance; LAMBDA in [0, 1] "
             "trades relevance (1.0) against diversity (0.0)"
+        ),
+    )
+    parser.add_argument(
+        "--expand",
+        type=int,
+        default=None,
+        metavar="TERMS",
+        help=(
+            "expand the query with TERMS terms borrowed from the top results of "
+            "a first retrieval pass (pseudo-relevance feedback)"
+        ),
+    )
+    parser.add_argument(
+        "--expand-docs",
+        type=int,
+        default=5,
+        metavar="N",
+        help="how many first-pass results to treat as relevant (default 5)",
+    )
+    parser.add_argument(
+        "--expand-weight",
+        type=float,
+        default=0.8,
+        metavar="ALPHA",
+        help=(
+            "weight kept on the original query, in [0, 1]; 1.0 disables the "
+            "borrowed terms entirely (default 0.8)"
         ),
     )
     sub = parser.add_subparsers(dest="command", required=True)

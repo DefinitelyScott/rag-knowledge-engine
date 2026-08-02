@@ -12,14 +12,20 @@ Fusion decides what is relevant; it says nothing about whether the top ``k``
 are redundant with each other. Because the chunker overlaps adjacent chunks on
 purpose, they frequently are. An optional MMR pass (see :mod:`ragkb.rerank`)
 trades a little relevance for coverage when that matters.
+
+Neither retriever can match a word the query does not contain, and fusing two
+retrievers that both missed the same synonym changes nothing. An optional
+pseudo-relevance feedback pass (see :mod:`ragkb.expansion`) borrows terms from
+the first-pass results and retrieves again with them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence
 
 from .bm25 import BM25Index
+from .expansion import ExpansionConfig, expand_query
 from .rerank import mean_pairwise_similarity, mmr_rerank
 from .text import Chunk, tokenize
 from .vector import TfidfIndex
@@ -57,6 +63,7 @@ class HybridRetriever:
         chunks: Sequence[Chunk],
         rrf_k: int = 60,
         mmr_lambda: Optional[float] = None,
+        expansion: Optional[ExpansionConfig] = None,
     ) -> None:
         if rrf_k <= 0:
             raise ValueError("rrf_k must be positive")
@@ -65,6 +72,7 @@ class HybridRetriever:
         self.chunks: List[Chunk] = list(chunks)
         self.rrf_k = rrf_k
         self.mmr_lambda = mmr_lambda
+        self.expansion = expansion
         tokenised = [chunk.tokens for chunk in self.chunks]
         self.bm25 = BM25Index().fit(tokenised)
         self.vector = TfidfIndex().fit(tokenised)
@@ -72,34 +80,27 @@ class HybridRetriever:
     def __len__(self) -> int:
         return len(self.chunks)
 
-    def search(
+    def _rank_pool(
         self,
-        query: str,
-        k: int = 5,
-        method: str = "hybrid",
-        candidates: int = 25,
-        mmr_lambda: Optional[float] = None,
-    ) -> List[RetrievalResult]:
-        """Return the top ``k`` chunks for ``query`` under the given method.
+        method: str,
+        pool_size: int,
+        query_tokens: Optional[Sequence[str]] = None,
+        weights: Optional[Mapping[str, float]] = None,
+    ) -> tuple:
+        """One retrieval pass: return ``(pool, bm25_ranks, vector_ranks)``.
 
-        ``mmr_lambda`` overrides the retriever-level setting for one call. When
-        it resolves to a value, the candidate pool is re-ordered by Maximal
-        Marginal Relevance before the top ``k`` are taken, so the returned
-        passages cover more of the query instead of restating one passage.
+        Exactly one of ``query_tokens`` and ``weights`` is supplied. The token
+        path is the original, unweighted one and is what runs when expansion is
+        off, so disabling expansion is bit-for-bit the behaviour that existed
+        before it - the same property the ``lambda = 1.0`` row buys for MMR.
         """
-        if method not in METHODS:
-            raise ValueError("method must be one of {}".format(METHODS))
-        lambda_ = self.mmr_lambda if mmr_lambda is None else mmr_lambda
-        if lambda_ is not None and not 0.0 <= lambda_ <= 1.0:
-            raise ValueError("mmr_lambda must be in [0, 1]")
-
-        query_tokens = tokenize(query)
-        if not query_tokens or not self.chunks:
-            return []
-
-        pool_size = max(candidates, k)
-        bm25_hits = self.bm25.search(query_tokens, k=pool_size)
-        vector_hits = self.vector.search(query_tokens, k=pool_size)
+        if weights is None:
+            tokens = list(query_tokens or ())
+            bm25_hits = self.bm25.search(tokens, k=pool_size)
+            vector_hits = self.vector.search(tokens, k=pool_size)
+        else:
+            bm25_hits = self.bm25.search_weighted(weights, k=pool_size)
+            vector_hits = self.vector.search_weighted(weights, k=pool_size)
         bm25_ranks = {index: rank for rank, (index, _) in enumerate(bm25_hits, start=1)}
         vector_ranks = {
             index: rank for rank, (index, _) in enumerate(vector_hits, start=1)
@@ -115,6 +116,88 @@ class HybridRetriever:
                 for index, rank in ranks.items():
                     fused[index] = fused.get(index, 0.0) + 1.0 / (self.rrf_k + rank)
             pool = sorted(fused.items(), key=lambda pair: (-pair[1], pair[0]))
+        return pool, bm25_ranks, vector_ranks
+
+    def expansion_model(
+        self,
+        query: str,
+        method: str = "hybrid",
+        candidates: int = 25,
+        expansion: Optional[ExpansionConfig] = None,
+    ) -> Dict[str, float]:
+        """The weighted query model after one pseudo-relevance feedback pass.
+
+        Exposed separately from :meth:`search` so a caller can show which terms
+        were borrowed and how heavily - an expansion nobody can inspect is an
+        expansion nobody can debug.
+        """
+        config = self.expansion if expansion is None else expansion
+        query_tokens = tokenize(query)
+        if not query_tokens or not self.chunks or config is None:
+            return {}
+        pool, _, _ = self._rank_pool(
+            method, max(candidates, config.feedback_docs), query_tokens=query_tokens
+        )
+        return expand_query(
+            query_tokens,
+            pool,
+            [chunk.tokens for chunk in self.chunks],
+            self.bm25.idf,
+            config,
+        )
+
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        method: str = "hybrid",
+        candidates: int = 25,
+        mmr_lambda: Optional[float] = None,
+        expansion: Optional[ExpansionConfig] = None,
+    ) -> List[RetrievalResult]:
+        """Return the top ``k`` chunks for ``query`` under the given method.
+
+        ``mmr_lambda`` and ``expansion`` override the retriever-level settings
+        for one call. When ``expansion`` resolves to a config, a first pass
+        supplies the feedback documents, terms are borrowed from them, and the
+        pool is rebuilt from the expanded query. When ``mmr_lambda`` resolves to
+        a value, the candidate pool is then re-ordered by Maximal Marginal
+        Relevance before the top ``k`` are taken, so the returned passages cover
+        more of the query instead of restating one passage.
+        """
+        if method not in METHODS:
+            raise ValueError("method must be one of {}".format(METHODS))
+        lambda_ = self.mmr_lambda if mmr_lambda is None else mmr_lambda
+        if lambda_ is not None and not 0.0 <= lambda_ <= 1.0:
+            raise ValueError("mmr_lambda must be in [0, 1]")
+        config = self.expansion if expansion is None else expansion
+
+        query_tokens = tokenize(query)
+        if not query_tokens or not self.chunks:
+            return []
+
+        pool_size = max(candidates, k)
+        pool, bm25_ranks, vector_ranks = self._rank_pool(
+            method, pool_size, query_tokens=query_tokens
+        )
+
+        if config is not None:
+            expanded = expand_query(
+                query_tokens,
+                pool,
+                [chunk.tokens for chunk in self.chunks],
+                self.bm25.idf,
+                config,
+            )
+            # An expansion that borrowed nothing is not an expansion, and
+            # re-running retrieval for it would only re-derive the same pool
+            # through a different code path. Skipping keeps ``original_weight =
+            # 1.0`` exactly equal to the unexpanded ranking, which is the
+            # cheapest available correctness check on everything above.
+            if set(expanded) - set(query_tokens):
+                pool, bm25_ranks, vector_ranks = self._rank_pool(
+                    method, pool_size, weights=expanded
+                )
 
         if lambda_ is None:
             selected = pool[:k]

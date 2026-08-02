@@ -12,7 +12,13 @@ methods. The hard slice deliberately avoids the target document's vocabulary
 and includes questions whose answer is spread over two documents, so recall@k
 stops being a copy of hit@k and the fusion has something to prove.
 
-A second table sweeps the MMR diversity trade-off. Accuracy metrics alone cannot
+A second table sweeps the query-expansion trade-off. Pseudo-relevance feedback
+borrows terms from the first-pass results, which is the only lever here that can
+match a word the question never used - and it pays for that reach at rank one,
+so the table reports early precision alongside recall rather than one summary
+number.
+
+A third table sweeps the MMR diversity trade-off. Accuracy metrics alone cannot
 see redundancy - a top-5 made of five paraphrases of one passage scores exactly
 as well as five complementary ones - so that table also reports the mean
 pairwise cosine within each result set and how many distinct documents it spans.
@@ -32,6 +38,7 @@ from typing import Dict, List, Sequence
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ragkb.engine import EngineConfig, RAGEngine  # noqa: E402
+from ragkb.expansion import ExpansionConfig  # noqa: E402
 from ragkb.metrics import aggregate, mean  # noqa: E402
 from ragkb.retriever import METHODS  # noqa: E402
 
@@ -80,6 +87,46 @@ def evaluate_method(
     return aggregate(rankings, relevancies, ks=(1, 3, k))
 
 
+def parse_expansion_specs(text: str, feedback_docs: int) -> List[tuple]:
+    """Parse ``"terms:alpha,terms:alpha"`` into labelled expansion configs."""
+    specs = []
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        terms, _, alpha = item.partition(":")
+        config = ExpansionConfig(
+            feedback_docs=feedback_docs,
+            feedback_terms=int(terms),
+            original_weight=float(alpha) if alpha else 0.8,
+        )
+        specs.append(
+            (
+                "{}t a{:g}".format(config.feedback_terms, config.original_weight),
+                config,
+            )
+        )
+    return specs
+
+
+def expansion_report(
+    engine: RAGEngine, gold: Sequence[Dict], k: int, config
+) -> Dict[str, float]:
+    """Accuracy for one expansion setting, over one slice of the gold set."""
+    rankings = [
+        engine.ranked_doc_ids(record["question"], k=k, expansion=config)
+        for record in gold
+    ]
+    report = aggregate(rankings, [record["relevant"] for record in gold], ks=(1, 3, k))
+    return {
+        "hit@1": report["hit@1"],
+        "hit@3": report["hit@3"],
+        "hit@{}".format(k): report["hit@{}".format(k)],
+        "recall@{}".format(k): report["recall@{}".format(k)],
+        "mrr": report["mrr"],
+    }
+
+
 def diversity_report(
     engine: RAGEngine, gold: Sequence[Dict], k: int, mmr_lambda
 ) -> Dict[str, float]:
@@ -105,9 +152,9 @@ def diversity_report(
     }
 
 
-def format_diversity_table(rows: Sequence[tuple]) -> str:
+def format_sweep_table(rows: Sequence[tuple], label: str = "lambda") -> str:
     columns = list(rows[0][1].keys())
-    header = "{:<8}".format("lambda") + "".join(
+    header = "{:<8}".format(label) + "".join(
         "{:>15}".format(name) for name in columns
     )
     lines = [header, "-" * len(header)]
@@ -146,6 +193,20 @@ def main(argv=None) -> int:
         default="1.0,0.9,0.7,0.5,0.3",
         help="comma-separated MMR lambda values to sweep (empty to skip)",
     )
+    parser.add_argument(
+        "--expansion-specs",
+        default="5:1.0,3:0.9,5:0.8,10:0.8,5:0.7",
+        help=(
+            "comma-separated terms:original_weight expansion settings to sweep "
+            "(empty to skip)"
+        ),
+    )
+    parser.add_argument(
+        "--expansion-docs",
+        type=int,
+        default=5,
+        help="how many first-pass results feed the expansion",
+    )
     args = parser.parse_args(argv)
 
     gold = load_gold(args.gold)
@@ -178,6 +239,21 @@ def main(argv=None) -> int:
         print("\n{} ({})".format(label, describe(subset)))
         print(format_table(reports))
 
+    specs = parse_expansion_specs(args.expansion_specs, args.expansion_docs)
+    if specs:
+        for label, subset in slices(gold):
+            rows = [("off", expansion_report(engine, subset, args.k, None))]
+            for spec_label, config in specs:
+                rows.append(
+                    (spec_label, expansion_report(engine, subset, args.k, config))
+                )
+            print(
+                "\nquery expansion, {} feedback docs (hybrid, k={}) - {} slice".format(
+                    args.expansion_docs, args.k, label
+                )
+            )
+            print(format_sweep_table(rows, label="terms"))
+
     lambdas = [value for value in args.mmr_lambdas.split(",") if value.strip()]
     if lambdas:
         rows = [("off", diversity_report(engine, gold, args.k, None))]
@@ -188,7 +264,7 @@ def main(argv=None) -> int:
         print(
             "\nMMR diversity re-ranking (hybrid, k={})".format(args.k)
         )
-        print(format_diversity_table(rows))
+        print(format_sweep_table(rows))
 
     failures = [
         record["id"]

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Mapping, Sequence, Tuple
 
 
 class TfidfIndex:
@@ -59,6 +59,27 @@ class TfidfIndex:
     def vectorize_query(self, query_tokens: Sequence[str]) -> Dict[str, float]:
         return self._vectorize(Counter(query_tokens))
 
+    def vectorize_weights(self, weights: Mapping[str, float]) -> Dict[str, float]:
+        """Build a query vector from explicit term weights.
+
+        Unlike :meth:`vectorize_query` this does not apply the sublinear ``1 +
+        log(tf)`` damping. The damping exists to stop a term repeated twenty
+        times in a document from dominating; a query model that already states
+        "this term is worth 0.3" has no such runaway to control, and taking a
+        logarithm of it would distort the distribution it was asked to honour.
+        """
+        vector: Dict[str, float] = {}
+        for term, weight in weights.items():
+            idf = self.idf.get(term)
+            if idf is None or weight <= 0.0:
+                continue
+            vector[term] = weight * idf
+        norm = math.sqrt(sum(value * value for value in vector.values()))
+        if norm:
+            for term in vector:
+                vector[term] /= norm
+        return vector
+
     def similarity(self, query_vector: Dict[str, float], doc_index: int) -> float:
         document = self.vectors[doc_index]
         if len(query_vector) > len(document):
@@ -83,7 +104,15 @@ class TfidfIndex:
         return sum(weight * second.get(term, 0.0) for term, weight in first.items())
 
     def search(self, query_tokens: Sequence[str], k: int = 10) -> List[Tuple[int, float]]:
-        query_vector = self.vectorize_query(query_tokens)
+        return self._rank(self.vectorize_query(query_tokens), k)
+
+    def search_weighted(
+        self, weights: Mapping[str, float], k: int = 10
+    ) -> List[Tuple[int, float]]:
+        """Rank documents against a weighted query model, best first."""
+        return self._rank(self.vectorize_weights(weights), k)
+
+    def _rank(self, query_vector: Dict[str, float], k: int) -> List[Tuple[int, float]]:
         if not query_vector:
             return []
         scored = []

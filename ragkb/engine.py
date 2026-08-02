@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
 from .answerer import Answer, ExtractiveAnswerer
+from .expansion import ExpansionConfig
 from .retriever import HybridRetriever, RetrievalResult
 from .text import Chunk, chunk_document
 
@@ -24,6 +25,9 @@ class EngineConfig:
     #: MMR relevance/diversity trade-off. ``None`` disables re-ranking and
     #: keeps the pure fusion ordering; 0.7 is a reasonable starting point.
     mmr_lambda: Optional[float] = None
+    #: Pseudo-relevance feedback settings. ``None`` disables expansion and runs
+    #: the query exactly as the user wrote it.
+    expansion: Optional[ExpansionConfig] = None
 
 
 class RAGEngine:
@@ -50,6 +54,7 @@ class RAGEngine:
             self.chunks,
             rrf_k=self.config.rrf_k,
             mmr_lambda=self.config.mmr_lambda,
+            expansion=self.config.expansion,
         )
 
     @classmethod
@@ -76,6 +81,7 @@ class RAGEngine:
         k: int = 5,
         method: str = "hybrid",
         mmr_lambda: Optional[float] = None,
+        expansion: Optional[ExpansionConfig] = None,
     ) -> List[RetrievalResult]:
         return self.retriever.search(
             query,
@@ -83,6 +89,7 @@ class RAGEngine:
             method=method,
             candidates=self.config.candidates,
             mmr_lambda=mmr_lambda,
+            expansion=expansion,
         )
 
     def answer(
@@ -101,11 +108,16 @@ class RAGEngine:
         k: int = 5,
         method: str = "hybrid",
         mmr_lambda: Optional[float] = None,
+        expansion: Optional[ExpansionConfig] = None,
     ) -> List[str]:
         """Deduplicated document ids in rank order - the unit evaluation uses."""
         ordered: List[str] = []
         for result in self.search(
-            query, k=max(k * 4, k), method=method, mmr_lambda=mmr_lambda
+            query,
+            k=max(k * 4, k),
+            method=method,
+            mmr_lambda=mmr_lambda,
+            expansion=expansion,
         ):
             if result.doc_id not in ordered:
                 ordered.append(result.doc_id)

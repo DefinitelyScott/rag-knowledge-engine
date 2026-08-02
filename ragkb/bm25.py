@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Mapping, Sequence, Tuple
 
 
 class BM25Index:
@@ -53,6 +53,23 @@ class BM25Index:
         return self
 
     def score_document(self, query_tokens: Sequence[str], doc_index: int) -> float:
+        """Score one document against an unweighted list of query tokens.
+
+        A term repeated in the query contributes its score once per occurrence,
+        so this is exactly the weighted scorer with the term counts as weights.
+        """
+        return self.score_document_weighted(Counter(query_tokens), doc_index)
+
+    def score_document_weighted(
+        self, weights: Mapping[str, float], doc_index: int
+    ) -> float:
+        """Score one document against a weighted query model.
+
+        Query-term weighting is linear in BM25: saturation applies to the
+        *document* term frequency, not the query's, so a weight of 2.0 really
+        does count a term twice. That is what lets query expansion express a
+        proper term distribution instead of faking one by repeating tokens.
+        """
         frequencies = self.term_frequencies[doc_index]
         length = self.doc_lengths[doc_index]
         norm = (
@@ -61,11 +78,13 @@ class BM25Index:
             else self.k1
         )
         score = 0.0
-        for term in query_tokens:
+        for term, weight in weights.items():
             tf = frequencies.get(term, 0)
-            if not tf:
+            if not tf or not weight:
                 continue
-            score += self.idf.get(term, 0.0) * (tf * (self.k1 + 1.0)) / (tf + norm)
+            score += (
+                weight * self.idf.get(term, 0.0) * (tf * (self.k1 + 1.0)) / (tf + norm)
+            )
         return score
 
     def scores(self, query_tokens: Sequence[str]) -> List[float]:
@@ -73,10 +92,16 @@ class BM25Index:
 
     def search(self, query_tokens: Sequence[str], k: int = 10) -> List[Tuple[int, float]]:
         """Return the ``k`` best (document index, score) pairs, best first."""
+        return self.search_weighted(Counter(query_tokens), k=k)
+
+    def search_weighted(
+        self, weights: Mapping[str, float], k: int = 10
+    ) -> List[Tuple[int, float]]:
+        """Rank documents against a weighted query model, best first."""
         scored = [
-            (index, score)
-            for index, score in enumerate(self.scores(query_tokens))
-            if score > 0.0
+            (index, self.score_document_weighted(weights, index))
+            for index in range(self.doc_count)
         ]
+        scored = [(index, score) for index, score in scored if score > 0.0]
         scored.sort(key=lambda pair: (-pair[1], pair[0]))
         return scored[:k]

@@ -7,6 +7,7 @@ every retrieval and scoring decision is inspectable end to end.
 from .text import Chunk, chunk_document, split_sentences, tokenize
 from .bm25 import BM25Index
 from .vector import TfidfIndex
+from .expansion import ExpansionConfig, expand_query, relevance_model
 from .rerank import mean_pairwise_similarity, mmr_rerank
 from .retriever import HybridRetriever, RetrievalResult
 from .answerer import Answer, ExtractiveAnswerer, OpenAIAnswerer
@@ -23,6 +24,9 @@ __all__ = [
     "RetrievalResult",
     "mmr_rerank",
     "mean_pairwise_similarity",
+    "ExpansionConfig",
+    "expand_query",
+    "relevance_model",
     "Answer",
     "ExtractiveAnswerer",
     "OpenAIAnswerer",
