@@ -19,6 +19,10 @@ python -m ragkb.cli stats
 python -m ragkb.cli search "how does reciprocal rank fusion work" -k 3
 python -m ragkb.cli ask "what does the b parameter control in bm25"
 python -m ragkb.cli --expand 5 search "what breaks when a query and a page use different words"
+
+# index once, query many times without re-fitting
+python -m ragkb.cli index --out index.json
+python -m ragkb.cli --index index.json ask "what does the b parameter control in bm25"
 ```
 
 `ask` uses the offline extractive answerer by default. Passing `--llm` switches
@@ -58,8 +62,9 @@ BM25 ranked list                          TF-IDF cosine ranked list
 | `ragkb/rerank.py` | Maximal Marginal Relevance re-ranking, redundancy diagnostic |
 | `ragkb/answerer.py` | extractive answerer (offline) and OpenAI answerer, both cite |
 | `ragkb/engine.py` | corpus loading, chunking, indexing, question answering |
+| `ragkb/store.py` | index persistence: save/load with staleness fingerprinting |
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, MRR |
-| `ragkb/cli.py` | `stats`, `search`, `ask`, `--mmr`, `--expand` |
+| `ragkb/cli.py` | `stats`, `search`, `ask`, `index`, `--mmr`, `--expand`, `--index` |
 
 `corpus/` holds the sample knowledge base (twelve documents on information
 retrieval). `evals/gold.jsonl` holds forty-eight labelled questions with the
@@ -268,6 +273,27 @@ on newlines so a chunk round-trips through the splitter, and the extractive
 answerer skips heading-only sentences - a heading names a section, it does not
 assert anything. Retrieval metrics are unchanged; sentence grounding and
 citation precision are now 1.000.
+
+## Persistence
+
+Every CLI invocation used to re-read the corpus, re-chunk it and re-fit both
+indexes, even though none of them had changed. `ragkb index` snapshots the
+fitted state (chunks, BM25 statistics, TF-IDF vectors) into a single JSON
+file, and `--index` restores it directly, skipping tokenisation and fitting.
+
+The file records a SHA-256 fingerprint of the exact document texts plus the
+chunking parameters. Loading against a corpus that no longer matches raises
+`StaleIndexError` instead of serving quietly wrong rankings; query-time knobs
+(`--rrf-k`, `--mmr`, `--expand`) are deliberately outside the fingerprint, so
+they can be changed on a loaded index without a rebuild. Unknown format
+versions are refused rather than guessed at, and the write is atomic
+(temp file + `os.replace`), so a crash mid-save cannot truncate the index.
+
+Measured on this corpus (12 documents, 47 chunks), loading is about 1.7x
+faster than a cold build; on a 300-document copy of the same material the gap
+grows to about 2.4x, since fitting scales with corpus size while loading is a
+single JSON parse. Rankings, scores and answers are bit-for-bit identical
+either way - `tests/test_store.py` asserts exactly that.
 
 ## Design notes
 

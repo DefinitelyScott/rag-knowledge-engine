@@ -11,7 +11,8 @@ from .expansion import ExpansionConfig, expand_query, relevance_model
 from .rerank import mean_pairwise_similarity, mmr_rerank
 from .retriever import HybridRetriever, RetrievalResult
 from .answerer import Answer, ExtractiveAnswerer, OpenAIAnswerer
-from .engine import EngineConfig, RAGEngine
+from .engine import EngineConfig, RAGEngine, read_corpus
+from .store import IndexFormatError, StaleIndexError, load_index, save_index
 
 __all__ = [
     "Chunk",
@@ -32,6 +33,11 @@ __all__ = [
     "OpenAIAnswerer",
     "EngineConfig",
     "RAGEngine",
+    "read_corpus",
+    "save_index",
+    "load_index",
+    "StaleIndexError",
+    "IndexFormatError",
 ]
 
 __version__ = "0.1.0"

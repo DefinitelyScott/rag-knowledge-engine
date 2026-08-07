@@ -22,7 +22,7 @@ the first-pass results and retrieves again with them.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .bm25 import BM25Index
 from .expansion import ExpansionConfig, expand_query
@@ -64,7 +64,11 @@ class HybridRetriever:
         rrf_k: int = 60,
         mmr_lambda: Optional[float] = None,
         expansion: Optional[ExpansionConfig] = None,
+        indexes: Optional[Tuple[BM25Index, TfidfIndex]] = None,
     ) -> None:
+        """``indexes`` supplies already-fitted (BM25, TF-IDF) indexes over
+        exactly these chunks - the persistence layer's path around refitting.
+        When omitted, both indexes are fitted here from the chunk tokens."""
         if rrf_k <= 0:
             raise ValueError("rrf_k must be positive")
         if mmr_lambda is not None and not 0.0 <= mmr_lambda <= 1.0:
@@ -73,9 +77,14 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.mmr_lambda = mmr_lambda
         self.expansion = expansion
-        tokenised = [chunk.tokens for chunk in self.chunks]
-        self.bm25 = BM25Index().fit(tokenised)
-        self.vector = TfidfIndex().fit(tokenised)
+        if indexes is None:
+            tokenised = [chunk.tokens for chunk in self.chunks]
+            self.bm25 = BM25Index().fit(tokenised)
+            self.vector = TfidfIndex().fit(tokenised)
+        else:
+            self.bm25, self.vector = indexes
+            if self.bm25.doc_count != len(self.chunks) or self.vector.doc_count != len(self.chunks):
+                raise ValueError("prebuilt indexes do not cover these chunks")
 
     def __len__(self) -> int:
         return len(self.chunks)

@@ -52,6 +52,37 @@ class BM25Index:
         }
         return self
 
+    def to_dict(self) -> Dict:
+        """Serialisable snapshot of the fitted state.
+
+        Everything derivable is still stored (df, idf, averages): recomputing
+        it on load would re-run most of :meth:`fit`, and the point of
+        persisting is to skip that work, not to re-do it from a different
+        starting point.
+        """
+        return {
+            "k1": self.k1,
+            "b": self.b,
+            "doc_count": self.doc_count,
+            "avg_doc_length": self.avg_doc_length,
+            "doc_lengths": list(self.doc_lengths),
+            "term_frequencies": [dict(tf) for tf in self.term_frequencies],
+            "document_frequency": dict(self.document_frequency),
+            "idf": dict(self.idf),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "BM25Index":
+        """Restore a fitted index from :meth:`to_dict` output without refitting."""
+        index = cls(k1=data["k1"], b=data["b"])
+        index.doc_count = data["doc_count"]
+        index.avg_doc_length = data["avg_doc_length"]
+        index.doc_lengths = list(data["doc_lengths"])
+        index.term_frequencies = [Counter(tf) for tf in data["term_frequencies"]]
+        index.document_frequency = dict(data["document_frequency"])
+        index.idf = dict(data["idf"])
+        return index
+
     def score_document(self, query_tokens: Sequence[str], doc_index: int) -> float:
         """Score one document against an unweighted list of query tokens.
 

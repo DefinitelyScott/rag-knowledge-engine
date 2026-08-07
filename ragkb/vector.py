@@ -56,6 +56,26 @@ class TfidfIndex:
                 vector[term] /= norm
         return vector
 
+    def to_dict(self) -> Dict:
+        """Serialisable snapshot of the fitted state (see ``BM25Index.to_dict``)."""
+        return {
+            "sublinear_tf": self.sublinear_tf,
+            "doc_count": self.doc_count,
+            "document_frequency": dict(self.document_frequency),
+            "idf": dict(self.idf),
+            "vectors": [dict(vector) for vector in self.vectors],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "TfidfIndex":
+        """Restore a fitted index from :meth:`to_dict` output without refitting."""
+        index = cls(sublinear_tf=data["sublinear_tf"])
+        index.doc_count = data["doc_count"]
+        index.document_frequency = dict(data["document_frequency"])
+        index.idf = dict(data["idf"])
+        index.vectors = [dict(vector) for vector in data["vectors"]]
+        return index
+
     def vectorize_query(self, query_tokens: Sequence[str]) -> Dict[str, float]:
         return self._vectorize(Counter(query_tokens))
 

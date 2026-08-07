@@ -30,6 +30,22 @@ class EngineConfig:
     expansion: Optional[ExpansionConfig] = None
 
 
+def read_corpus(path: str) -> Dict[str, str]:
+    """Read every ``.md`` / ``.txt`` file in ``path`` into a ``doc_id -> text`` map."""
+    if not os.path.isdir(path):
+        raise FileNotFoundError("corpus directory not found: {}".format(path))
+    documents: Dict[str, str] = {}
+    for name in sorted(os.listdir(path)):
+        if not name.lower().endswith(TEXT_EXTENSIONS):
+            continue
+        full = os.path.join(path, name)
+        with open(full, "r", encoding="utf-8") as handle:
+            documents[os.path.splitext(name)[0]] = handle.read()
+    if not documents:
+        raise ValueError("no .md or .txt documents found in {}".format(path))
+    return documents
+
+
 class RAGEngine:
     """Chunk a set of documents, index them, and answer questions with citations."""
 
@@ -37,20 +53,27 @@ class RAGEngine:
         self,
         documents: Dict[str, str],
         config: Optional[EngineConfig] = None,
+        chunks: Optional[List[Chunk]] = None,
+        retriever: Optional[HybridRetriever] = None,
     ) -> None:
+        """``chunks`` and ``retriever`` accept precomputed state so that
+        :meth:`load` can restore an engine without re-chunking or re-fitting;
+        normal construction leaves both ``None`` and builds them here."""
         self.config = config or EngineConfig()
         self.documents = dict(documents)
-        self.chunks: List[Chunk] = []
-        for doc_id in sorted(self.documents):
-            self.chunks.extend(
-                chunk_document(
-                    doc_id,
-                    self.documents[doc_id],
-                    target_tokens=self.config.target_tokens,
-                    overlap_tokens=self.config.overlap_tokens,
+        if chunks is None:
+            chunks = []
+            for doc_id in sorted(self.documents):
+                chunks.extend(
+                    chunk_document(
+                        doc_id,
+                        self.documents[doc_id],
+                        target_tokens=self.config.target_tokens,
+                        overlap_tokens=self.config.overlap_tokens,
+                    )
                 )
-            )
-        self.retriever = HybridRetriever(
+        self.chunks: List[Chunk] = list(chunks)
+        self.retriever = retriever or HybridRetriever(
             self.chunks,
             rrf_k=self.config.rrf_k,
             mmr_lambda=self.config.mmr_lambda,
@@ -62,18 +85,27 @@ class RAGEngine:
         cls, path: str, config: Optional[EngineConfig] = None
     ) -> "RAGEngine":
         """Load every ``.md`` / ``.txt`` file in ``path`` as one document."""
-        if not os.path.isdir(path):
-            raise FileNotFoundError("corpus directory not found: {}".format(path))
-        documents: Dict[str, str] = {}
-        for name in sorted(os.listdir(path)):
-            if not name.lower().endswith(TEXT_EXTENSIONS):
-                continue
-            full = os.path.join(path, name)
-            with open(full, "r", encoding="utf-8") as handle:
-                documents[os.path.splitext(name)[0]] = handle.read()
-        if not documents:
-            raise ValueError("no .md or .txt documents found in {}".format(path))
-        return cls(documents, config=config)
+        return cls(read_corpus(path), config=config)
+
+    def save(self, path: str) -> None:
+        """Persist the fitted index to ``path`` (see :mod:`ragkb.store`)."""
+        from . import store
+
+        store.save_index(self, path)
+
+    @classmethod
+    def load(
+        cls, path: str, verify_corpus: Optional[Dict[str, str]] = None
+    ) -> "RAGEngine":
+        """Restore an engine saved with :meth:`save`, skipping the fit.
+
+        ``verify_corpus`` optionally supplies the current corpus documents;
+        a fingerprint mismatch then raises ``ragkb.store.StaleIndexError``
+        instead of answering from stale data.
+        """
+        from . import store
+
+        return store.load_index(path, verify_corpus=verify_corpus)
 
     def search(
         self,
