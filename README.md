@@ -63,7 +63,7 @@ BM25 ranked list                          TF-IDF cosine ranked list
 | `ragkb/answerer.py` | extractive answerer (offline) and OpenAI answerer, both cite |
 | `ragkb/engine.py` | corpus loading, chunking, indexing, question answering |
 | `ragkb/store.py` | index persistence: save/load with staleness fingerprinting |
-| `ragkb/metrics.py` | hit@k, recall@k, precision@k, MRR |
+| `ragkb/metrics.py` | hit@k, recall@k, precision@k, nDCG@k, MRR |
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `index`, `--mmr`, `--expand`, `--index` |
 
 `corpus/` holds the sample knowledge base (twelve documents on information
@@ -89,19 +89,19 @@ than one.
 
 **easy (30 questions)**
 
-| method | hit@1 | hit@3 | hit@5 | recall@5 | MRR |
-| --- | --- | --- | --- | --- | --- |
-| hybrid | 0.800 | 0.933 | 0.967 | 0.967 | 0.869 |
-| bm25 | 0.800 | 0.933 | 0.967 | 0.967 | 0.868 |
-| vector | 0.833 | 0.933 | 0.967 | 0.967 | 0.886 |
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.800 | 0.933 | 0.967 | 0.967 | 0.894 | 0.869 |
+| bm25 | 0.800 | 0.933 | 0.967 | 0.967 | 0.893 | 0.868 |
+| vector | 0.833 | 0.933 | 0.967 | 0.967 | 0.906 | 0.886 |
 
 **hard (18 questions, 8 with two relevant documents)**
 
-| method | hit@1 | hit@3 | hit@5 | recall@3 | recall@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.444 | 0.833 | 0.889 | 0.750 | 0.778 | 0.606 |
-| bm25 | 0.444 | 0.778 | 0.889 | 0.694 | 0.778 | 0.596 |
-| vector | 0.444 | 0.833 | 0.889 | 0.722 | 0.778 | 0.606 |
+| method | hit@1 | hit@3 | hit@5 | recall@3 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.444 | 0.833 | 0.889 | 0.750 | 0.778 | 0.612 | 0.606 |
+| bm25 | 0.444 | 0.778 | 0.889 | 0.694 | 0.778 | 0.604 | 0.596 |
+| vector | 0.444 | 0.833 | 0.889 | 0.722 | 0.778 | 0.606 | 0.606 |
 
 The easy slice was saturated and hid everything. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
@@ -112,6 +112,15 @@ The hard slice restores headroom: hit@1 falls from 0.800 to 0.444 and MRR from
 0.869 to 0.606, and recall@k finally diverges from hit@k because a question
 answered by two documents can be half-satisfied. Four questions land in exactly
 that state at k=5, which is a failure mode the old set could not express at all.
+
+nDCG@5 is the one column that rewards ranking the *second* relevant document
+high: MRR stops looking after the first hit, and recall@5 does not care whether
+that second document sits at rank 2 or rank 5. Repeated chunks of one document
+are credited once, so a top-5 stuffed with paraphrases of a single passage
+cannot outscore one that ranks two distinct relevant documents. On the hard
+slice this is the only metric where hybrid beats *both* components (0.612 vs
+0.606 vector, 0.604 BM25) - the fusion's edge is in how it orders the full
+relevant set, which MRR ties could not show.
 
 Reported honestly: hybrid still does not dominate. It beats BM25 on the hard
 slice at rank three (hit@3 0.833 vs 0.778, recall@3 0.750 vs 0.694) and ties

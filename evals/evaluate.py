@@ -4,6 +4,9 @@ Runs the gold question set through each retrieval method and prints an ablation
 table so that the hybrid retriever has to justify itself against its own
 components. Document-level relevance is used: a result counts as a hit when the
 retrieved chunk came from a document listed as relevant for that question.
+Alongside hit/recall/MRR the table reports nDCG@k, which is the only column
+that rewards ranking the *second* relevant document high - MRR stops looking
+after the first hit and recall@k ignores rank order entirely.
 
 The gold set is split by difficulty and each slice is reported separately. The
 easy slice is lexically overlapping - the wording of the question shares terms
@@ -84,7 +87,21 @@ def evaluate_method(
         engine.ranked_doc_ids(record["question"], k=k, method=method) for record in gold
     ]
     relevancies = [record["relevant"] for record in gold]
-    return aggregate(rankings, relevancies, ks=(1, 3, k))
+    report = aggregate(rankings, relevancies, ks=(1, 3, k))
+    # Trim to the columns that tell distinct stories at this corpus size:
+    # hit@k for coverage as k grows, recall@k for the multi-document questions,
+    # nDCG@k for how well the whole relevant set is ordered, MRR for the first
+    # hit. precision@1 == hit@1 always, and the dropped mid-k recall/precision
+    # values move in lockstep with what is kept.
+    keys = [
+        "hit@1",
+        "hit@3",
+        "hit@{}".format(k),
+        "recall@{}".format(k),
+        "ndcg@{}".format(k),
+        "mrr",
+    ]
+    return {key: report[key] for key in keys}
 
 
 def parse_expansion_specs(text: str, feedback_docs: int) -> List[tuple]:
