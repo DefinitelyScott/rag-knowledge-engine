@@ -46,3 +46,11 @@
 {"id": "h16", "question": "What has to happen to a question like what about the second one before it reaches something with no memory?", "relevant": ["query-processing"], "difficulty": "hard"}
 {"id": "h17", "question": "How can new material be added without touching everything already written to disk?", "relevant": ["inverted-index"], "difficulty": "hard"}
 {"id": "h18", "question": "Why can what a system knows be changed without any training at all?", "relevant": ["rag"], "difficulty": "hard"}
+{"id": "q31", "question": "How does ColBERT's MaxSim operator score a passage against a query?", "relevant": ["late-interaction"], "difficulty": "easy"}
+{"id": "q32", "question": "Why does late interaction store one vector per token instead of one per passage?", "relevant": ["late-interaction"], "difficulty": "easy"}
+{"id": "q33", "question": "How does product quantisation shrink an embedding into a short code of centroid ids?", "relevant": ["vector-compression"], "difficulty": "easy"}
+{"id": "q34", "question": "What is Matryoshka representation learning and why does it let a vector be truncated?", "relevant": ["vector-compression"], "difficulty": "easy"}
+{"id": "h19", "question": "What kind of scorer keeps a separate representation for every word yet still lets the document side be prepared ahead of time?", "relevant": ["late-interaction"], "difficulty": "hard"}
+{"id": "h20", "question": "How do the accuracy gains of reading both texts together compare with designs where the collection is encoded in advance?", "relevant": ["late-interaction", "reranking"], "difficulty": "hard"}
+{"id": "h21", "question": "How can the memory bill for storing meanings as numbers be cut sharply without retraining anything?", "relevant": ["vector-compression"], "difficulty": "hard"}
+{"id": "h22", "question": "After a heavily squeezed index hands back rough candidates, what second pass makes the final ordering trustworthy again?", "relevant": ["vector-compression", "reranking"], "difficulty": "hard"}
