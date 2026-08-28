@@ -1,0 +1,18 @@
+{"id": "u01", "question": "how do I configure a kubernetes ingress controller to terminate tls", "kind": "off-domain"}
+{"id": "u02", "question": "what is the difference between a b-tree and an lsm tree storage engine", "kind": "off-domain"}
+{"id": "u03", "question": "how does the raft consensus protocol elect a new leader", "kind": "off-domain"}
+{"id": "u04", "question": "what does the global interpreter lock prevent in cpython threading", "kind": "off-domain"}
+{"id": "u05", "question": "why does a react useeffect hook leak memory when the cleanup is missing", "kind": "off-domain"}
+{"id": "u06", "question": "what is the correct way to rebase a feature branch onto main in git", "kind": "off-domain"}
+{"id": "u07", "question": "how do lora adapters fine-tune a language model without touching the base weights", "kind": "near-domain"}
+{"id": "u08", "question": "what loss function is dense passage retrieval trained with", "kind": "near-domain"}
+{"id": "u09", "question": "how does splade learn sparse term weights for a passage", "kind": "near-domain"}
+{"id": "u10", "question": "how is a knowledge graph used to store entity relations for retrieval", "kind": "near-domain"}
+{"id": "u11", "question": "how do you shard a search cluster across nodes and route a query to the right shard", "kind": "near-domain"}
+{"id": "u12", "question": "what is speculative decoding and how much does it speed up generation", "kind": "near-domain"}
+{"id": "u13", "question": "what privacy risk does an embedding inversion attack create for a stored index", "kind": "near-domain"}
+{"id": "u14", "question": "what temperature and top-p settings work best for a summarisation prompt", "kind": "near-domain"}
+{"id": "u15", "question": "how does query autocomplete rank suggestions while the user is still typing", "kind": "near-domain"}
+{"id": "u16", "question": "when should a bloom filter sit in front of a lookup to avoid a disk read", "kind": "near-domain"}
+{"id": "u17", "question": "how do you a/b test a ranking change against live user traffic", "kind": "near-domain"}
+{"id": "u18", "question": "what does it cost per month to run a managed vector database at a billion vectors", "kind": "near-domain"}

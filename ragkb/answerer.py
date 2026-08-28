@@ -36,6 +36,14 @@ class Answer:
     citations: List[str]
     method: str
     supporting_chunks: List[str] = field(default_factory=list)
+    #: True when the abstention gate declined to answer (see
+    #: :mod:`ragkb.abstain`). An abstention is a *successful* outcome, not an
+    #: error, so it is a flag on the normal return type rather than a raise.
+    abstained: bool = False
+    #: The answerability report behind that decision, when the gate ran at all.
+    #: Left untyped here so :mod:`ragkb.answerer` keeps its one-way dependency
+    #: on retrieval and does not import the gate it is gated by.
+    answerability: Optional[object] = None
 
     def formatted(self) -> str:
         if not self.citations:

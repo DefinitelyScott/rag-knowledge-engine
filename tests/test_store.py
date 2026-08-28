@@ -5,11 +5,13 @@ import os
 
 import pytest
 
+from ragkb.crossencoder import CrossEncoder, CrossEncoderWeights, RerankConfig
 from ragkb.engine import EngineConfig, RAGEngine
 from ragkb.expansion import ExpansionConfig
 from ragkb.store import (
     IndexFormatError,
     StaleIndexError,
+    UnserializableConfigError,
     corpus_fingerprint,
 )
 
@@ -110,6 +112,32 @@ def test_unverified_load_trusts_the_file(tmp_path):
     assert snapshot(RAGEngine.load(path)) == snapshot(engine)
 
 
+def test_round_trip_preserves_the_ngram_list(tmp_path):
+    """A three-list index has to come back as a three-list index.
+
+    Loading it as a two-list fusion would still answer, and would answer
+    differently - the failure this asserts against is a silent one.
+    """
+    engine = build(EngineConfig(ngram=4))
+    path = str(tmp_path / "index.json")
+    engine.save(path)
+    loaded = RAGEngine.load(path, verify_corpus=DOCS)
+    assert loaded.retriever.ngram is not None
+    assert loaded.retriever.ngram.n == 4
+    assert loaded.config.ngram == 4
+    for method in ("hybrid", "bm25", "vector", "ngram"):
+        assert snapshot(loaded, method) == snapshot(engine, method)
+
+
+def test_an_index_saved_without_ngrams_loads_without_them(tmp_path):
+    engine = build()
+    path = str(tmp_path / "index.json")
+    engine.save(path)
+    with open(path) as handle:
+        assert json.load(handle)["ngram"] is None
+    assert RAGEngine.load(path).retriever.ngram is None
+
+
 def test_unknown_version_is_rejected(tmp_path):
     engine = build()
     path = str(tmp_path / "index.json")
@@ -137,3 +165,43 @@ def test_save_is_atomic_no_temp_file_left_behind(tmp_path):
     engine.save(path)
     assert os.path.exists(path)
     assert not os.path.exists(path + ".tmp")
+
+
+def test_round_trip_preserves_the_rerank_config(tmp_path):
+    config = EngineConfig(
+        rerank=RerankConfig(
+            alpha=0.3,
+            weights=CrossEncoderWeights(coverage=0.6, proximity=0.2, phrase=0.2),
+        )
+    )
+    engine = build(config)
+    path = str(tmp_path / "index.json")
+    engine.save(path)
+    loaded = RAGEngine.load(path)
+    assert loaded.config.rerank.alpha == pytest.approx(0.3)
+    assert loaded.config.rerank.weights.coverage == pytest.approx(0.6)
+    assert snapshot(loaded) == snapshot(engine)
+
+
+def test_a_custom_encoder_refuses_to_serialise_silently(tmp_path):
+    """Better a loud error than an index that quietly loads without its model."""
+
+    class Custom(CrossEncoder):
+        def score(self, query_tokens, passage_tokens):
+            return 1.0
+
+    engine = build(EngineConfig(rerank=RerankConfig(encoder=Custom())))
+    with pytest.raises(UnserializableConfigError):
+        engine.save(str(tmp_path / "index.json"))
+
+
+def test_an_index_written_before_reranking_existed_still_loads(tmp_path):
+    engine = build()
+    path = str(tmp_path / "index.json")
+    engine.save(path)
+    with open(path) as handle:
+        data = json.load(handle)
+    del data["config"]["rerank"]
+    with open(path, "w") as handle:
+        json.dump(data, handle)
+    assert RAGEngine.load(path).config.rerank is None

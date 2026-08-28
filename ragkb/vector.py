@@ -6,13 +6,33 @@ TF-IDF vectors and are ranked by cosine similarity against the query vector.
 It generalises better than BM25 across wording differences within a shared
 vocabulary, and it fails in different ways, which is exactly what makes fusing
 the two worthwhile.
+
+Ranking is term-at-a-time over a postings list, for the reasons set out in
+:mod:`ragkb.bm25`: a cosine between sparse vectors is a sum of per-term
+products, so walking each query term's postings and accumulating into a
+per-document total does exactly the work the dot products represent and none
+of the work their zeros represent.
+
+The saving is largest here, and largest of all for
+:class:`ragkb.ngram.CharNgramIndex`, which inherits this loop unchanged. A word
+query carries perhaps eight terms; the same query as 4-grams carries fifty, and
+each document holds roughly six times as many features. Scoring
+document-at-a-time makes that a fifty-lookup probe against every document in
+the collection, most of them missing.
+
+One caveat stated rather than glossed: :meth:`similarity` iterates whichever of
+the two vectors is shorter, so it can add the same products in a different
+order from this loop. The ranking is the same and the scores agree to within
+floating-point summation order, but unlike the BM25 path they are not
+guaranteed bit-identical, and ``tests/test_postings.py`` asserts the two
+strengths separately rather than pretending they are one.
 """
 
 from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Dict, List, Mapping, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 
 class TfidfIndex:
@@ -24,6 +44,7 @@ class TfidfIndex:
         self.document_frequency: Dict[str, int] = {}
         self.idf: Dict[str, float] = {}
         self.vectors: List[Dict[str, float]] = []
+        self.postings: Dict[str, List[Tuple[int, float]]] = {}
 
     def fit(self, documents: Sequence[Sequence[str]]) -> "TfidfIndex":
         self.doc_count = len(documents)
@@ -40,7 +61,47 @@ class TfidfIndex:
             for term, df in self.document_frequency.items()
         }
         self.vectors = [self._vectorize(counter) for counter in counters]
+        self.postings = self._build_postings()
         return self
+
+    def _build_postings(self) -> Dict[str, List[Tuple[int, float]]]:
+        """Rebuild ``term -> (document, weight)`` from the stored vectors.
+
+        Built from the vectors rather than from the raw counters so the
+        postings carry the *final* weights - already IDF-scaled and already
+        L2-normalised. Scoring is then a multiply-and-add per posting with no
+        further arithmetic, and terms ``_vectorize`` dropped for want of an IDF
+        entry are absent here too, so the postings can never promise a document
+        the scorer would not credit.
+        """
+        postings: Dict[str, List[Tuple[int, float]]] = {}
+        for index, vector in enumerate(self.vectors):
+            for term, weight in vector.items():
+                postings.setdefault(term, []).append((index, weight))
+        return postings
+
+    def candidates(self, terms: Iterable[str]) -> List[int]:
+        """Document indices sharing at least one term with ``terms``, ascending."""
+        matched: Set[int] = set()
+        for term in terms:
+            matched.update(index for index, _ in self.postings.get(term, ()))
+        return sorted(matched)
+
+    def _accumulate(self, query_vector: Mapping[str, float]) -> Dict[int, float]:
+        """Cosine against every reachable document, term-at-a-time.
+
+        The stored vectors are L2-normalised, so the dot product accumulated
+        here is the cosine directly - there is no per-document normalisation
+        step to defer, which is what lets the whole ranking be one pass over
+        postings.
+        """
+        totals: Dict[int, float] = {}
+        for term, weight in query_vector.items():
+            if not weight:
+                continue
+            for index, stored in self.postings.get(term, ()):
+                totals[index] = totals.get(index, 0.0) + weight * stored
+        return totals
 
     def _vectorize(self, frequencies: Counter) -> Dict[str, float]:
         vector: Dict[str, float] = {}
@@ -74,6 +135,7 @@ class TfidfIndex:
         index.document_frequency = dict(data["document_frequency"])
         index.idf = dict(data["idf"])
         index.vectors = [dict(vector) for vector in data["vectors"]]
+        index.postings = index._build_postings()
         return index
 
     def vectorize_query(self, query_tokens: Sequence[str]) -> Dict[str, float]:
@@ -133,12 +195,17 @@ class TfidfIndex:
         return self._rank(self.vectorize_weights(weights), k)
 
     def _rank(self, query_vector: Dict[str, float], k: int) -> List[Tuple[int, float]]:
+        """Rank the documents sharing a term with ``query_vector``, best first.
+
+        Ties break on the document index so the order does not depend on which
+        term happened to reach a document first.
+        """
         if not query_vector:
             return []
-        scored = []
-        for index in range(self.doc_count):
-            score = self.similarity(query_vector, index)
-            if score > 0.0:
-                scored.append((index, score))
+        scored = [
+            (index, score)
+            for index, score in self._accumulate(query_vector).items()
+            if score > 0.0
+        ]
         scored.sort(key=lambda pair: (-pair[1], pair[0]))
         return scored[:k]

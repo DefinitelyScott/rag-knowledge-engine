@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence
 
+from .abstain import REFUSAL, AbstentionConfig, AnswerabilityReport, assess
 from .answerer import Answer, ExtractiveAnswerer
+from .crossencoder import RerankConfig
 from .expansion import ExpansionConfig
 from .retriever import HybridRetriever, RetrievalResult
 from .text import Chunk, chunk_document
@@ -28,6 +30,25 @@ class EngineConfig:
     #: Pseudo-relevance feedback settings. ``None`` disables expansion and runs
     #: the query exactly as the user wrote it.
     expansion: Optional[ExpansionConfig] = None
+    #: Second-stage re-ranking settings. ``None`` disables the cross-encoder
+    #: stage and returns the first-stage ordering.
+    rerank: Optional[RerankConfig] = None
+    #: n for the optional character n-gram index (see :mod:`ragkb.ngram`).
+    #: ``None`` leaves it out and fuses only BM25 and TF-IDF; 4 is the usual
+    #: value. Unlike the query-time knobs this one is index-time - it fits a
+    #: third index - which is why it belongs here next to the chunk sizes.
+    ngram: Optional[int] = None
+    #: Per-list weights in the RRF sum, e.g. ``{"ngram": 2.0}`` to let the
+    #: character n-gram list count double. ``None`` weights every list equally,
+    #: which is textbook RRF and the behaviour that existed before weighting.
+    #: Query-time, not index-time: changing it re-fuses existing ranked lists
+    #: and never re-fits an index, so a persisted index stays valid.
+    fusion_weights: Optional[Mapping[str, float]] = None
+    #: Abstention gate. ``None`` - the default - always answers, which is the
+    #: behaviour that existed before the gate. Supplying a config makes
+    #: :meth:`RAGEngine.answer` decline when the retrieved evidence scores
+    #: below its threshold.
+    abstain: Optional[AbstentionConfig] = None
 
 
 def read_corpus(path: str) -> Dict[str, str]:
@@ -78,6 +99,9 @@ class RAGEngine:
             rrf_k=self.config.rrf_k,
             mmr_lambda=self.config.mmr_lambda,
             expansion=self.config.expansion,
+            rerank=self.config.rerank,
+            ngram=self.config.ngram,
+            fusion_weights=self.config.fusion_weights,
         )
 
     @classmethod
@@ -114,6 +138,8 @@ class RAGEngine:
         method: str = "hybrid",
         mmr_lambda: Optional[float] = None,
         expansion: Optional[ExpansionConfig] = None,
+        rerank: Optional[RerankConfig] = None,
+        fusion_weights: Optional[Mapping[str, float]] = None,
     ) -> List[RetrievalResult]:
         return self.retriever.search(
             query,
@@ -122,7 +148,25 @@ class RAGEngine:
             candidates=self.config.candidates,
             mmr_lambda=mmr_lambda,
             expansion=expansion,
+            rerank=rerank,
+            fusion_weights=fusion_weights,
         )
+
+    def answerability(
+        self,
+        query: str,
+        k: int = 4,
+        method: str = "hybrid",
+        abstain: Optional[AbstentionConfig] = None,
+    ) -> AnswerabilityReport:
+        """How well the retrieved evidence covers ``query`` (see :mod:`ragkb.abstain`).
+
+        Exposed on its own so the decision can be inspected without generating
+        an answer - a gate whose reasoning is not visible is a gate nobody can
+        tune.
+        """
+        results = self.search(query, k=k, method=method)
+        return assess(self.retriever, query, results, config=abstain or self.config.abstain)
 
     def answer(
         self,
@@ -130,8 +174,30 @@ class RAGEngine:
         k: int = 4,
         method: str = "hybrid",
         answerer=None,
+        abstain: Optional[AbstentionConfig] = None,
     ) -> Answer:
+        """Answer ``query`` from the corpus, optionally declining to.
+
+        ``abstain`` (falling back to ``config.abstain``) gates generation: when
+        the retrieved evidence scores below its threshold the answerer is never
+        called and the returned :class:`~ragkb.answerer.Answer` carries no
+        citations, because there is nothing it would be honest to cite.
+        """
         results = self.search(query, k=k, method=method)
+        config = abstain if abstain is not None else self.config.abstain
+        if config is not None:
+            report = assess(self.retriever, query, results, config=config)
+            if not report.answerable:
+                return Answer(
+                    text=REFUSAL,
+                    citations=[],
+                    method="abstained",
+                    abstained=True,
+                    answerability=report,
+                )
+            answer = (answerer or ExtractiveAnswerer()).answer(query, results)
+            answer.answerability = report
+            return answer
         return (answerer or ExtractiveAnswerer()).answer(query, results)
 
     def ranked_doc_ids(
@@ -141,6 +207,8 @@ class RAGEngine:
         method: str = "hybrid",
         mmr_lambda: Optional[float] = None,
         expansion: Optional[ExpansionConfig] = None,
+        rerank: Optional[RerankConfig] = None,
+        fusion_weights: Optional[Mapping[str, float]] = None,
     ) -> List[str]:
         """Deduplicated document ids in rank order - the unit evaluation uses."""
         ordered: List[str] = []
@@ -150,6 +218,8 @@ class RAGEngine:
             method=method,
             mmr_lambda=mmr_lambda,
             expansion=expansion,
+            rerank=rerank,
+            fusion_weights=fusion_weights,
         ):
             if result.doc_id not in ordered:
                 ordered.append(result.doc_id)
@@ -159,7 +229,7 @@ class RAGEngine:
 
     def stats(self) -> Dict[str, float]:
         token_counts = [chunk.token_count for chunk in self.chunks]
-        return {
+        stats = {
             "documents": len(self.documents),
             "chunks": len(self.chunks),
             "vocabulary": len(self.retriever.bm25.document_frequency),
@@ -169,3 +239,9 @@ class RAGEngine:
             "min_chunk_tokens": min(token_counts) if token_counts else 0,
             "max_chunk_tokens": max(token_counts) if token_counts else 0,
         }
+        if self.retriever.ngram is not None:
+            # Reported next to the word vocabulary on purpose: the ratio is the
+            # price of the third list, and it is large enough that guessing at
+            # it would be misleading.
+            stats["ngram_vocabulary"] = len(self.retriever.ngram.document_frequency)
+        return stats

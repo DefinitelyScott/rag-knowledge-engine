@@ -31,14 +31,23 @@ import os
 from typing import Dict, Optional
 
 from .bm25 import BM25Index
+from .crossencoder import CrossEncoderWeights, RerankConfig
 from .engine import EngineConfig, RAGEngine
 from .expansion import ExpansionConfig
+from .ngram import CharNgramIndex
 from .retriever import HybridRetriever
 from .text import Chunk
 from .vector import TfidfIndex
 
 FORMAT = "ragkb-index"
-VERSION = 1
+#: Bumped to 2 when the optional character n-gram index joined the payload.
+#: The new key could have been read with a default and the version left alone,
+#: but then code predating it would load a three-list index, find no n-gram
+#: block, and answer from a two-list fusion while the stored config said
+#: otherwise - quietly wrong rankings, which is precisely what the version
+#: field exists to prevent. Refusing and asking for a rebuild is the cheap
+#: failure; the expensive one is the silent success.
+VERSION = 2
 
 _CHUNK_FIELDS = (
     "doc_id",
@@ -56,6 +65,10 @@ class IndexFormatError(ValueError):
 
 class StaleIndexError(ValueError):
     """The index was built from a corpus or config that no longer matches."""
+
+
+class UnserializableConfigError(ValueError):
+    """The config holds something the JSON index format cannot represent."""
 
 
 def corpus_fingerprint(
@@ -90,6 +103,24 @@ def _config_to_dict(config: EngineConfig) -> Dict:
             "feedback_terms": config.expansion.feedback_terms,
             "original_weight": config.expansion.original_weight,
         }
+    rerank = None
+    if config.rerank is not None:
+        if config.rerank.encoder is not None:
+            # A custom encoder may be a model, a network client, anything. The
+            # index format stores knobs, not objects, so refuse rather than
+            # write a file that silently loads back without its re-ranker.
+            raise UnserializableConfigError(
+                "cannot serialise a custom cross-encoder; save the index with "
+                "the default lexical encoder, or set the encoder after loading"
+            )
+        rerank = {
+            "alpha": config.rerank.alpha,
+            "weights": {
+                "coverage": config.rerank.weights.coverage,
+                "proximity": config.rerank.weights.proximity,
+                "phrase": config.rerank.weights.phrase,
+            },
+        }
     return {
         "target_tokens": config.target_tokens,
         "overlap_tokens": config.overlap_tokens,
@@ -97,6 +128,8 @@ def _config_to_dict(config: EngineConfig) -> Dict:
         "candidates": config.candidates,
         "mmr_lambda": config.mmr_lambda,
         "expansion": expansion,
+        "rerank": rerank,
+        "ngram": config.ngram,
     }
 
 
@@ -104,6 +137,12 @@ def _config_from_dict(data: Dict) -> EngineConfig:
     expansion = None
     if data.get("expansion") is not None:
         expansion = ExpansionConfig(**data["expansion"])
+    rerank = None
+    if data.get("rerank") is not None:
+        rerank = RerankConfig(
+            alpha=data["rerank"]["alpha"],
+            weights=CrossEncoderWeights(**data["rerank"]["weights"]),
+        )
     return EngineConfig(
         target_tokens=data["target_tokens"],
         overlap_tokens=data["overlap_tokens"],
@@ -111,6 +150,8 @@ def _config_from_dict(data: Dict) -> EngineConfig:
         candidates=data["candidates"],
         mmr_lambda=data.get("mmr_lambda"),
         expansion=expansion,
+        rerank=rerank,
+        ngram=data.get("ngram"),
     )
 
 
@@ -146,6 +187,14 @@ def save_index(engine: RAGEngine, path: str) -> None:
         "chunks": [_chunk_to_dict(chunk) for chunk in engine.chunks],
         "bm25": engine.retriever.bm25.to_dict(),
         "vector": engine.retriever.vector.to_dict(),
+        # ``None`` rather than an absent key: the reader can then tell "this
+        # index was built without the n-gram list" from "this file predates
+        # it", and only the second is a reason to refuse.
+        "ngram": (
+            engine.retriever.ngram.to_dict()
+            if engine.retriever.ngram is not None
+            else None
+        ),
     }
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
@@ -189,15 +238,20 @@ def load_index(
             )
 
     chunks = [_chunk_from_dict(item) for item in data["chunks"]]
+    ngram_index = (
+        CharNgramIndex.from_dict(data["ngram"]) if data.get("ngram") else None
+    )
     retriever = HybridRetriever(
         chunks,
         rrf_k=config.rrf_k,
         mmr_lambda=config.mmr_lambda,
         expansion=config.expansion,
+        rerank=config.rerank,
         indexes=(
             BM25Index.from_dict(data["bm25"]),
             TfidfIndex.from_dict(data["vector"]),
         ),
+        ngram_index=ngram_index,
     )
     return RAGEngine(
         data["documents"], config=config, chunks=chunks, retriever=retriever
