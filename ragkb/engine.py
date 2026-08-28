@@ -111,6 +111,42 @@ class RAGEngine:
         """Load every ``.md`` / ``.txt`` file in ``path`` as one document."""
         return cls(read_corpus(path), config=config)
 
+    def add_document(self, doc_id: str, text: str) -> List[Chunk]:
+        """Add one document to a live engine and return the chunks it produced.
+
+        Chunking uses this engine's configured sizes, so the new document is
+        split exactly as the rest of the corpus was. The chunks are appended
+        and handed to :meth:`ragkb.retriever.HybridRetriever.add_chunks`, which
+        extends BM25 in place and refits the vector lists - see that method for
+        why the two halves differ and what appending costs in tie-break order.
+
+        Re-adding an existing ``doc_id`` raises rather than replacing it.
+        Replacement is a different operation: the old document's chunks would
+        have to be *removed*, and removal renumbers every chunk after them,
+        which no postings list here survives. Growing the index is supported;
+        editing it is a rebuild, and saying so is better than a method that
+        silently double-indexes a document under one id.
+
+        A persisted index stays consistent across this: :meth:`save` writes the
+        fingerprint of ``self.documents``, which now includes the new document.
+        """
+        if doc_id in self.documents:
+            raise ValueError("document already indexed: {}".format(doc_id))
+        if not text.strip():
+            raise ValueError("refusing to index an empty document: {}".format(doc_id))
+        new_chunks = chunk_document(
+            doc_id,
+            text,
+            target_tokens=self.config.target_tokens,
+            overlap_tokens=self.config.overlap_tokens,
+        )
+        if not new_chunks:
+            raise ValueError("document produced no chunks: {}".format(doc_id))
+        self.documents[doc_id] = text
+        self.retriever.add_chunks(new_chunks)
+        self.chunks = self.retriever.chunks
+        return new_chunks
+
     def save(self, path: str) -> None:
         """Persist the fitted index to ``path`` (see :mod:`ragkb.store`)."""
         from . import store

@@ -1302,6 +1302,106 @@ grows to about 2.4x, since fitting scales with corpus size while loading is a
 single JSON parse. Rankings, scores and answers are bit-for-bit identical
 either way - `tests/test_store.py` asserts exactly that.
 
+### Growing the index: what "incremental" is actually worth
+
+Persistence removes the cost of rebuilding an index that did not change. The
+other half of the same problem is an index that changed *slightly* - one new
+document arriving at a process that already holds the other thirteen. Until now
+that was a full rebuild, because the engine had exactly two ways to exist: built
+from a corpus, or restored from a snapshot.
+
+`RAGEngine.add_document` adds a third. It is worth stating up front that it is
+only half incremental, and that the half which is not is the expensive half.
+
+BM25's state is additive. Term-frequency counters and document lengths are
+per-document and append; document frequency is a running count; the postings
+list gains one entry per (new chunk, term) pair and keeps its ascending order
+because new chunks take the highest indices. Two quantities are
+collection-wide, and neither needs the old documents to update: `avg_doc_length`
+is a sum already being maintained, and IDF is a *scoring coefficient* applied at
+query time, so refreshing all of it is one pass over the vocabulary.
+`BM25Index.add_documents` therefore never re-tokenises, re-counts or re-scans a
+single indexed document.
+
+TF-IDF cannot do this, and the reason is structural rather than an omission.
+Its IDF is not a coefficient applied later - it is baked into the stored data.
+Each vector holds `tf * idf` and is then L2-normalised, so one new document
+changes `doc_count`, changes every IDF, and therefore changes both the weights
+*and* the length of every vector already stored, including vectors for documents
+sharing no term with the new one. Rebuilding them is the same traversal as
+fitting them. An `add_documents` on `TfidfIndex` could only ever save the
+tokenisation, at the cost of keeping a second copy of the raw counters - so
+there deliberately is not one. An API named for an incremental update that
+performs a full refit is a promise about cost the implementation does not keep.
+
+`python evals/incremental.py` measures the asymmetry instead of asserting it.
+Holding out the document that sorts last and adding it back:
+
+```
+stage                           median_ms      p95_ms     mean_ms           n     xbase
+---------------------------------------------------------------------------------------
+cold: build all 14 docs              5.88        7.98        6.17          25      1.00
+cold: build 13 then add 1            9.10       10.75        9.26          25      1.55
+warm: add 1 to a live index          3.77        4.27        4.16          25      0.64
+```
+
+That is one run, not an average of several. Across repeated runs on this machine
+the cold-incremental multiplier lands between 1.3x and 1.6x and the warm one
+between 0.59x and 0.68x, which is the precision these numbers actually have -
+a build this short is a handful of milliseconds sitting on top of scheduler
+noise. The sign of each result is solid; the second decimal place is not.
+
+Two different answers, and the difference is what you start from.
+
+From cold the incremental path **loses, by about half again**. Reaching fourteen
+documents by way of thirteen pays the TF-IDF fit twice - once at thirteen, once
+at fourteen - and that refit is the largest single stage in the build (2.24 ms
+of it, against 1.22 ms for BM25 and 1.29 ms for chunking). If you do not already
+have an index, build one; there is no version of this where assembling a corpus
+document by document is the fast way.
+
+From warm - a running process holding an index and handed one new document,
+which is the only case the method exists for - it costs roughly **0.6x a full
+rebuild**, against a corpus rebuild that is itself only ~6 ms. The saving is
+the tokenising and counting of the thirteen documents already indexed, and it is
+real but bounded, because the TF-IDF refit stays in the bill.
+
+That framing is also the honest scaling statement, and it does not flatter the
+feature: the saving is a *fixed* cost removed (one pass over the documents
+already indexed, which is what add avoids re-doing) set against a cost that
+*grows* with the collection (rebuilding every vector in it). The 0.65x is not a
+floor that improves with scale - it is a number that gets worse as the corpus
+grows, until the refit dominates and the warm row converges on 1.00x. Nothing
+here measures that curve; one corpus size cannot. What it does establish is
+which way the curve points and why.
+
+The correctness claim is the part that has to be exact, and it is checked
+against real from-scratch builds rather than against a re-derivation of the same
+arithmetic. All 56 gold questions, ranked by both a grown engine and a whole
+one, across every method, are identical position for position, and
+`tests/test_incremental.py` pins the index state itself - counters, lengths,
+document frequencies, IDF and postings - equal to what a single `fit` produces.
+Eval numbers are unchanged, as they must be: the index is the same index.
+
+Two limitations are deliberate rather than pending.
+
+**Chunks are appended, not merged into corpus order.** That is the whole point.
+Keeping the chunk list sorted by document id would renumber the existing chunks,
+and every posting in every index refers to a chunk by its index, so a sorted
+insert is a refit wearing a different name. The visible consequence is that a
+grown engine holds its chunks in insertion order. Scores are unaffected, but
+ranking ties break on the chunk index, so a tie between two equally scored
+chunks can resolve differently than in a from-scratch build over the same
+documents. The tests hold the added document to the one that sorts last, where
+the two orders coincide and the rankings are required to match exactly - which
+is a way of saying the tie-break caveat is a real caveat and not a hedge.
+
+**There is no `remove_document` or `replace_document`.** Removal renumbers every
+chunk after the removed one, which no postings list here survives. Growing the
+index is supported; editing it is a rebuild. `add_document` raises on a
+duplicate id rather than replacing, because the alternative is a method that
+silently indexes one document twice under one name.
+
 ## Browser demo
 
 `ragkb serve` starts a small read-only HTTP demo so the engine can be poked at
@@ -1399,7 +1499,7 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 401 tests
+pytest -q      # 415 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
@@ -1442,8 +1542,13 @@ winning every fold, that ties resolve towards the caller's first configuration
 so a default never moves for free, that the held-out mean covers every question
 once rather than averaging unequal folds, and - the test the module exists to
 pass - that twelve configurations of pure coin flips are detected as an inflated
-in-sample maximum with unstable winners), and an end-to-end pass over the real
-corpus and gold set.
+in-sample maximum with unstable winners), incremental indexing (that extending
+BM25 reproduces a single `fit` term for term and posting for posting, that
+adding one document changes the IDF of terms it does not contain, that an engine
+grown one document at a time returns rankings identical to a from-scratch build
+over the same corpus - with and without the n-gram list - and that the grown
+index still round-trips through a save/load), and an end-to-end pass over the
+real corpus and gold set.
 
 One of those tests exists because a bug shipped into a draft: `--ngram` was
 first declared with argparse's `nargs="?"`, which quietly consumes the

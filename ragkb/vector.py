@@ -47,6 +47,28 @@ class TfidfIndex:
         self.postings: Dict[str, List[Tuple[int, float]]] = {}
 
     def fit(self, documents: Sequence[Sequence[str]]) -> "TfidfIndex":
+        """Fit over all documents. There is deliberately no incremental variant.
+
+        :class:`~ragkb.bm25.BM25Index` gained :meth:`~ragkb.bm25.BM25Index.add_documents`
+        because its per-document state is additive and only IDF is global -
+        and IDF there is a scoring *coefficient*, applied at query time, so
+        refreshing it is one pass over the vocabulary and nothing stored has
+        to change.
+
+        Here IDF is baked into the stored data. Each vector holds
+        ``tf * idf`` and is then L2-normalised, so a single new document
+        changes ``doc_count``, changes every IDF, and therefore changes both
+        the weights *and* the norm of every vector already stored - including
+        vectors for documents that share no term with the new one. Rebuilding
+        them is the same traversal as fitting them, so an ``add_documents``
+        here could only save the tokenisation, and it would cost an extra copy
+        of the raw counters to do it.
+
+        Offering the method anyway would be the worst option: an API named for
+        an incremental update, doing a full refit, is a promise about cost that
+        the implementation does not keep. ``evals/incremental.py`` measures
+        what that asymmetry is worth on this corpus.
+        """
         self.doc_count = len(documents)
         self.document_frequency = {}
         counters = [Counter(tokens) for tokens in documents]

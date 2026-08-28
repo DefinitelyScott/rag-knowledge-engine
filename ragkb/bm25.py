@@ -82,12 +82,64 @@ class BM25Index:
                 self.document_frequency[term] = self.document_frequency.get(term, 0) + 1
                 self.postings.setdefault(term, []).append((index, count))
 
-        # Robertson/Sparck Jones IDF with the +1 smoothing that keeps the value
-        # non-negative for terms present in more than half the collection.
+        self._refresh_idf()
+        return self
+
+    def _refresh_idf(self) -> None:
+        """Recompute IDF for every term from the current document frequencies.
+
+        Robertson/Sparck Jones IDF with the +1 smoothing that keeps the value
+        non-negative for terms present in more than half the collection.
+
+        Every value depends on ``doc_count``, so this is all-or-nothing: one
+        new document changes the IDF of terms it does not contain. That is why
+        :meth:`add_documents` cannot touch only the terms it saw, and it is the
+        cheapest global work in this package - one pass over the vocabulary,
+        with no tokenisation and no document access.
+        """
         self.idf = {
             term: math.log(1.0 + (self.doc_count - df + 0.5) / (df + 0.5))
             for term, df in self.document_frequency.items()
         }
+
+    def add_documents(self, documents: Sequence[Sequence[str]]) -> "BM25Index":
+        """Extend a fitted index with new documents, without re-reading the old.
+
+        The state BM25 keeps is additive almost everywhere. Term frequencies
+        and document lengths are per-document and simply append; document
+        frequency is a running count; the postings list gains one entry per
+        (new document, term) pair and keeps its ascending document order
+        because new documents take the highest indices. Only two things are
+        collection-wide, and neither needs the old documents to update:
+        ``avg_doc_length`` is a sum already being maintained, and IDF is one
+        pass over the vocabulary.
+
+        So the old documents are never re-tokenised, re-counted, or re-scanned,
+        and the result is exactly what :meth:`fit` would have produced over the
+        concatenation - the same counters, lengths, frequencies and postings,
+        in the same order. ``tests/test_incremental.py`` asserts that against a
+        real from-scratch build rather than trusting the argument.
+
+        The catch is not in this method but in what it implies for the callers
+        that share an index with it: see :meth:`ragkb.vector.TfidfIndex.fit`
+        and ``evals/incremental.py`` for why the vector half cannot do this.
+        """
+        if not documents:
+            return self
+        start = self.doc_count
+        for offset, tokens in enumerate(documents):
+            frequencies = Counter(tokens)
+            index = start + offset
+            self.term_frequencies.append(frequencies)
+            self.doc_lengths.append(len(tokens))
+            for term, count in frequencies.items():
+                self.document_frequency[term] = self.document_frequency.get(term, 0) + 1
+                self.postings.setdefault(term, []).append((index, count))
+        self.doc_count = start + len(documents)
+        self.avg_doc_length = (
+            sum(self.doc_lengths) / self.doc_count if self.doc_count else 0.0
+        )
+        self._refresh_idf()
         return self
 
     def _build_postings(self) -> Dict[str, List[Tuple[int, int]]]:

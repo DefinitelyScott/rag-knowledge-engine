@@ -201,6 +201,39 @@ class HybridRetriever:
     def __len__(self) -> int:
         return len(self.chunks)
 
+    def add_chunks(self, chunks: Sequence[Chunk]) -> "HybridRetriever":
+        """Index new chunks, updating what can be updated and refitting what cannot.
+
+        BM25 is extended in place; the TF-IDF list - and the n-gram list, which
+        is a TF-IDF index over a different analyzer - are refitted over every
+        chunk, for the reason set out in :meth:`ragkb.vector.TfidfIndex.fit`.
+        The mixture is the honest one: this method is cheaper than building a
+        retriever from scratch, and not by as much as "incremental" suggests.
+
+        New chunks are *appended*, not merged into corpus order. That is the
+        whole point - keeping the chunk list sorted by document id would
+        renumber existing chunks, and every posting in every index refers to a
+        chunk by its index, so a sorted insert is a refit wearing a different
+        name. The visible consequence is that an engine grown by
+        :meth:`ragkb.engine.RAGEngine.add_document` holds its chunks in
+        insertion order rather than corpus order. Scores are unaffected, but
+        ranking ties break on the chunk index, so a tie between two equally
+        scored chunks can resolve differently than in a from-scratch build over
+        the same documents. When the added document sorts last the two orders
+        coincide and the rankings are identical, which is what
+        ``tests/test_incremental.py`` pins down.
+        """
+        new = list(chunks)
+        if not new:
+            return self
+        self.bm25.add_documents([chunk.tokens for chunk in new])
+        self.chunks.extend(new)
+        tokenised = [chunk.tokens for chunk in self.chunks]
+        self.vector.fit(tokenised)
+        if self.ngram is not None:
+            self.ngram.fit(tokenised)
+        return self
+
     @property
     def methods(self) -> Tuple[str, ...]:
         """Retrieval methods this retriever can actually serve."""
