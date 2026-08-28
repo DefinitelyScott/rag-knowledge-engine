@@ -93,8 +93,8 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/failures.py` | per-question failure analysis: where a missed document really ranks, and which lever recovers it |
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test |
 
-`corpus/` holds the sample knowledge base (fourteen documents on information
-retrieval). `evals/gold.jsonl` holds fifty-six labelled questions with the
+`corpus/` holds the sample knowledge base (sixteen documents on information
+retrieval). `evals/gold.jsonl` holds sixty-four labelled questions with the
 documents that answer them, split into an `easy` and a `hard` slice.
 `evals/unanswerable.jsonl` holds eighteen questions the corpus deliberately
 cannot answer, split into `off-domain` and `near-domain`, which is what the
@@ -115,65 +115,75 @@ python evals/latency.py            # what each optional stage costs per query
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (14 documents, 57 chunks,
-56 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (16 documents, 69 chunks,
+64 questions, k=5, document-level relevance).
 
-The gold set is split by difficulty. The `easy` slice is thirty-four
+The gold set is split by difficulty. The `easy` slice is thirty-eight
 questions whose wording shares vocabulary with the target document. The `hard`
-slice is twenty-two questions written to avoid the target document's own terms -
+slice is twenty-six questions written to avoid the target document's own terms -
 "if someone writes automobiles but the page only ever says cars" instead of
-"vocabulary mismatch" - and ten of them are answered by two documents rather
+"vocabulary mismatch" - and twelve of them are answered by two documents rather
 than one.
 
-**easy (34 questions)**
+**easy (38 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.824 | 0.971 | 0.971 | 0.971 | 0.905 | 0.882 |
-| bm25 | 0.853 | 0.941 | 0.971 | 0.971 | 0.917 | 0.900 |
-| vector | 0.824 | 0.912 | 0.971 | 0.971 | 0.897 | 0.873 |
+| hybrid | 0.816 | 0.895 | 0.974 | 0.974 | 0.894 | 0.868 |
+| bm25 | 0.868 | 0.895 | 0.947 | 0.947 | 0.907 | 0.893 |
+| vector | 0.816 | 0.868 | 0.974 | 0.974 | 0.890 | 0.863 |
 
-**hard (22 questions, 10 with two relevant documents)**
+**hard (26 questions, 12 with two relevant documents)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@3 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.500 | 0.864 | 0.909 | 0.727 | 0.773 | 0.636 | 0.653 |
-| bm25 | 0.500 | 0.818 | 0.864 | 0.705 | 0.727 | 0.621 | 0.645 |
-| vector | 0.500 | 0.818 | 0.909 | 0.682 | 0.773 | 0.635 | 0.659 |
+| hybrid | 0.538 | 0.808 | 0.885 | 0.692 | 0.769 | 0.651 | 0.671 |
+| bm25 | 0.538 | 0.769 | 0.885 | 0.673 | 0.769 | 0.641 | 0.655 |
+| vector | 0.538 | 0.769 | 0.885 | 0.635 | 0.769 | 0.646 | 0.668 |
 
-The easy slice was saturated and hid everything. Every question on it has
+The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
-hit@k - the column was decoration. hit@5 sits at 0.971 for all three methods, so
-no retrieval change can move it in either direction.
+hit@k - the column is decoration. hit@5 sits at 0.974 for hybrid and TF-IDF, so
+there is almost nothing left there for a retrieval change to move.
 
-The hard slice restores headroom: hit@1 falls from 0.824 to 0.500 and MRR from
-0.882 to 0.653, and recall@k finally diverges from hit@k because a question
+The hard slice restores headroom: hit@1 falls from 0.816 to 0.538 and MRR from
+0.868 to 0.671, and recall@k finally diverges from hit@k because a question
 answered by two documents can be half-satisfied. Six questions land in exactly
-that state at k=5, which is a failure mode the old set could not express at all.
+that state at k=5, which is a failure mode the easy slice cannot express at all.
 
 nDCG@5 is the one column that rewards ranking the *second* relevant document
 high: MRR stops looking after the first hit, and recall@5 does not care whether
 that second document sits at rank 2 or rank 5. Repeated chunks of one document
 are credited once, so a top-5 stuffed with paraphrases of a single passage
 cannot outscore one that ranks two distinct relevant documents. On the hard
-slice this is still the only metric where hybrid edges *both* components
-(0.636 vs 0.635 vector, 0.621 BM25) - the margin over BM25 is real, the margin
-over TF-IDF is a rounding hair - because the fusion's edge is in how it orders
-the full relevant set, which MRR ties could not show.
+slice this is the only metric where hybrid beats *both* components
+(0.651 against 0.646 vector and 0.641 BM25), and at k=5 the three methods are
+now exactly tied on hit@5 and recall@5 - so ordering quality is the only place
+the fusion can show an edge at all.
 
-Reported honestly: hybrid still does not dominate, and the corpus was grown to
-stop letting it off easy. An earlier version of this README diagnosed the
-retrievers' constant agreement as "a corpus problem, not a tuning problem";
-the two newest documents were added to fix exactly that. `late-interaction.md`
-sits directly beside `reranking.md` (both discuss cross-encoders and candidate
-pools) and `vector-compression.md` beside `ann-search.md` (both discuss product
-quantisation), so several questions now have a lexically plausible wrong
-neighbour. The methods respond by disagreeing more: BM25 takes the easy slice
-outright at rank one (hit@1 0.853, MRR 0.900), TF-IDF takes hard-slice MRR by
-0.006, and hybrid answers on the hard slice at rank three (hit@3 0.864 against
-0.818 for both components) and at hit@5/recall@5, where BM25 alone drops a
-question the fusion recovers. Fusion buys ordering quality on paraphrased
-questions and pays a little at rank one on literal ones.
+Reported honestly: hybrid still does not dominate, and the corpus keeps being
+grown to stop letting it off easy. The four newest documents were added for
+exactly that reason, each placed beside an existing one it shares vocabulary
+with: `late-interaction.md` beside `reranking.md`, `vector-compression.md`
+beside `ann-search.md`, `sparse-neural-retrieval.md` beside `bm25.md` and
+`inverted-index.md`, and `multi-hop-retrieval.md` beside `query-processing.md`
+and `rag.md`. Every one of those pairs gives some question a lexically
+plausible wrong neighbour. The pattern that survived the growth is the same
+one: BM25 takes the easy slice outright at rank one (hit@1 0.868, MRR 0.893)
+while hybrid takes it at k=5 (0.974 against 0.947, where BM25 alone drops a
+question the fusion recovers), and on the hard slice hybrid leads at rank three
+(0.808 against 0.769 for both components) and on every ordering metric. Fusion
+buys ordering quality on paraphrased questions and pays a little at rank one on
+literal ones.
+
+The growth cost one documented behaviour, which is worth stating rather than
+quietly re-pinning. `tests/test_expansion.py` used to assert that pseudo-relevance
+feedback rescues h18 (`rag`) at the shipped weight. With sixteen documents in
+the feedback pool it no longer does; recovering h18 now needs
+`original_weight=0.7`, which loses three other questions. Expansion still
+rescues h08 and h15 at the shipped setting, so the test pins h15 instead. The
+lever did not break - its operating point moved, and a bigger corpus is what
+moved it.
 
 ### Tuning the constants: chunk size, overlap, and `rrf_k`
 
@@ -195,71 +205,71 @@ python evals/tune.py
 python evals/tune.py --slice hard --chunk-specs 120:0,120:30,150:40
 ```
 
-**chunking, all 56 questions, k=5** (deltas against the shipped default)
+**chunking, all 64 questions, k=5** (deltas against the shipped default)
 
 | target:overlap | chunks | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 60:15 | 150 | 0.643 | 0.875 | 0.964 | 0.920 | 0.788 | 0.767 |
-| 80:20 | 91 | 0.679 | 0.875 | 0.946 | 0.893 | 0.793 | 0.782 |
-| 100:25 | 68 | 0.661 | 0.929 | **0.982** | **0.929** | 0.805 | 0.791 |
-| 120:0 | 46 | 0.625 | 0.839 | **0.982** | **0.929** | 0.784 | 0.754 |
-| 120:15 | 55 | **0.696** | 0.929 | 0.946 | 0.893 | 0.803 | **0.798** |
-| **120:30** (default) | 57 | **0.696** | 0.929 | 0.946 | 0.893 | 0.799 | 0.792 |
-| 120:60 | 69 | 0.679 | 0.893 | 0.964 | 0.911 | 0.801 | 0.790 |
-| 150:40 | 44 | 0.679 | 0.911 | **0.982** | **0.929** | **0.814** | 0.796 |
-| 180:45 | 38 | 0.661 | 0.911 | 0.964 | 0.911 | 0.795 | 0.783 |
-| 200:50 | 31 | 0.643 | 0.929 | 0.946 | 0.902 | 0.785 | 0.772 |
+| 60:15 | 182 | 0.688 | 0.844 | 0.953 | 0.914 | 0.803 | 0.782 |
+| 80:20 | 117 | 0.703 | 0.844 | 0.938 | 0.891 | 0.799 | 0.789 |
+| 100:25 | 84 | 0.703 | 0.875 | **0.969** | **0.922** | 0.816 | 0.807 |
+| 120:0 | 56 | 0.672 | 0.812 | 0.953 | 0.914 | 0.790 | 0.766 |
+| 120:15 | 67 | **0.734** | 0.875 | 0.953 | 0.906 | 0.815 | **0.813** |
+| **120:30** (default) | 69 | 0.703 | 0.859 | 0.938 | 0.891 | 0.795 | 0.788 |
+| 120:60 | 83 | **0.734** | 0.875 | 0.953 | 0.906 | **0.817** | 0.812 |
+| 150:40 | 54 | 0.688 | 0.859 | 0.906 | 0.875 | 0.792 | 0.777 |
+| 180:45 | 46 | 0.672 | **0.906** | **0.969** | **0.922** | 0.805 | 0.788 |
+| 200:50 | 38 | 0.688 | 0.875 | 0.953 | 0.906 | 0.800 | 0.788 |
 
 **Overlap earns its keep, and the reason is not the one the design note gave.**
 `120:0` is the same chunk size with the overlap switched off, and it is the
-worst row in the table at rank one: hit@1 falls 0.696 -> 0.625 and hit@3 0.929
--> 0.839, the largest early-ranking loss any setting produces. That is the
-design claim confirmed - an idea straddling a boundary really is retrievable
-from both sides, and dropping overlap really does cost the questions that
-depend on it.
+worst row in the table at early ranks: hit@1 falls 0.703 -> 0.672 and hit@3
+0.859 -> 0.812, the largest early-ranking loss any setting produces. That is
+the design claim confirmed - an idea straddling a boundary really is
+retrievable from both sides, and dropping overlap really does cost the
+questions that depend on it.
 
-But `120:0` simultaneously *gains* reach: hit@5 and recall@5 both rise 0.036, to
-the best values in the table. That is not a contradiction, it is the redundancy
-problem measured from the other end. Overlap manufactures near-duplicate chunks,
-near-duplicates crowd each other into the top five, and a top-five spent on two
-views of one passage is a top-five that did not reach a second document. The MMR
-section treats that as a re-ranking problem; this table shows it is also a
-chunking one, and the two dials fight over the same 0.036.
+But `120:0` simultaneously *gains* reach: hit@5 rises 0.016 and recall@5 0.023.
+That is not a contradiction, it is the redundancy problem measured from the
+other end. Overlap manufactures near-duplicate chunks, near-duplicates crowd
+each other into the top five, and a top-five spent on two views of one passage
+is a top-five that did not reach a second document. The MMR section treats that
+as a re-ranking problem; this table shows it is also a chunking one, and the two
+dials fight over the same handful of questions.
 
-**The default is defensible but it is a choice, not a maximum.** Nothing beats
-120:30 at rank one - 120:15 ties it - which is the column it was implicitly
-tuned for. It is beaten on every reach column. `150:40` is the strongest
-alternative: it matches the best hit@5 and recall@5 in the table, takes nDCG@5
-outright (0.814 vs 0.799), edges MRR, and gives up only hit@1 and hit@3. In
-absolute terms that trade is two questions won at k=5 against one lost at rank
-one, on 56 questions - too thin to call a win, and adopting it would invalidate
-every other table in this README, all of which were measured at 120:30. It is
-recorded here as the candidate it is rather than quietly shipped.
+**The default is defensible but it is a choice, not a maximum, and the bigger
+corpus made that sharper.** At 14 documents nothing beat 120:30 at rank one. At
+16 it is beaten there too: `120:15` and `120:60` both take hit@1 by 0.031 - two
+questions - and lead on nDCG@5 and MRR as well. `180:45` takes the reach columns.
+The shipped default now wins no column outright. That is worth stating plainly
+rather than re-tuning on the spot: adopting a new default would invalidate every
+other table in this README, all of which were measured at 120:30, and a two-question
+lead on 64 questions is inside the noise the significance section measures. It is
+recorded as the candidate it is.
 
-The extremes fail as expected and confirm the sweep is measuring something real.
-`60:15` cuts the corpus into 150 chunks averaging 50 tokens and loses 0.054 of
-hit@1: chunks too short to contain a whole answer. `200:50` gives up 0.054 of
-hit@1 in the other direction, where a 173-token chunk dilutes the matched terms
-with surrounding text. The useful range is a broad plateau between roughly 100
-and 150 target tokens, which is worth knowing precisely because it means the
-exact value inside that band is not what any other result here depends on.
+The extremes still fail as expected, which is the evidence the sweep measures
+something real. `60:15` cuts the corpus into 182 chunks averaging 51 tokens and
+gives up hit@3 and MRR: chunks too short to contain a whole answer. `150:40` is
+the weakest reach row in the table. The useful range is a broad plateau between
+roughly 100 and 130 target tokens, which is worth knowing precisely because it
+means the exact value inside that band is not what any other result here depends
+on.
 
-**`rrf_k`, all 56 questions, k=5.** The `changed` column counts questions whose
+**`rrf_k`, all 64 questions, k=5.** The `changed` column counts questions whose
 top-5 ordering differs from the default - the measurement that separates
 "equally good" from "does nothing at all".
 
 | rrf_k | hit@1 | hit@5 | nDCG@5 | MRR | changed |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 0.696 | 0.946 | 0.801 | 0.795 | 5 |
-| 5 | 0.696 | 0.946 | 0.799 | 0.792 | 2 |
-| 10 | 0.696 | 0.946 | 0.799 | 0.792 | 1 |
-| 20 | 0.696 | 0.946 | 0.799 | 0.792 | 0 |
-| **60** (default) | 0.696 | 0.946 | 0.799 | 0.792 | 0 |
-| 200 | 0.696 | 0.946 | 0.799 | 0.792 | 0 |
-| 1000 | 0.696 | 0.946 | 0.799 | 0.792 | 0 |
+| 1 | 0.719 | 0.938 | 0.801 | 0.796 | 5 |
+| 5 | 0.703 | 0.938 | 0.795 | 0.788 | 2 |
+| 10 | 0.703 | 0.938 | 0.795 | 0.788 | 0 |
+| 20 | 0.703 | 0.938 | 0.795 | 0.788 | 0 |
+| **60** (default) | 0.703 | 0.938 | 0.795 | 0.788 | 0 |
+| 200 | 0.703 | 0.938 | 0.795 | 0.788 | 0 |
+| 1000 | 0.703 | 0.938 | 0.795 | 0.788 | 0 |
 
 `rrf_k` is inert on this corpus, and the `changed` column is what proves it:
-every value at or above 20 returns byte-identical top-5 orderings on all 56
+every value at or above 10 returns byte-identical top-5 orderings on all 64
 questions. This is not "tuning did not help", it is "there was nothing to tune",
 and those are different claims that an accuracy table alone cannot tell apart.
 
@@ -269,7 +279,7 @@ the first list to rank something highly dominates, and as it grows large every
 term flattens toward `1/rrf_k` and the ordering converges on the sum of ranks -
 Borda count. With only *two* lists that already agree on most questions, both
 ends produce the same order. `rrf_k = 1` is the only value that moves anything,
-touching 5 questions for +0.003 MRR, which on 56 questions is noise. The knob
+touching 5 questions for +0.008 MRR, which on 64 questions is noise. The knob
 would start to matter with more retrievers in the fusion, or with retrievers
 that disagree more than BM25 and TF-IDF do here - and the honest version of that
 claim is that this corpus cannot demonstrate it.
@@ -298,60 +308,65 @@ python -m ragkb.cli --expand 5 search "if someone writes automobiles but the pag
 
 Sweeping terms and `alpha` with five feedback documents, at k=5:
 
-**easy (34 questions)**
+**easy (38 questions)**
 
 | terms | hit@1 | hit@3 | hit@5 | recall@5 | MRR |
 | --- | --- | --- | --- | --- | --- |
-| off | 0.824 | 0.971 | 0.971 | 0.971 | 0.882 |
-| 5, a=1.0 | 0.824 | 0.971 | 0.971 | 0.971 | 0.882 |
-| 3, a=0.9 | 0.735 | 0.941 | 0.971 | 0.971 | 0.831 |
-| 5, a=0.8 | 0.706 | 0.941 | 0.971 | 0.971 | 0.826 |
-| 5, a=0.7 | 0.618 | 0.941 | 1.000 | 1.000 | 0.783 |
+| off | 0.816 | 0.895 | 0.974 | 0.974 | 0.868 |
+| 5, a=1.0 | 0.816 | 0.895 | 0.974 | 0.974 | 0.868 |
+| 3, a=0.9 | 0.763 | 0.895 | 0.974 | 0.974 | 0.833 |
+| 5, a=0.8 | 0.658 | 0.816 | 0.947 | 0.947 | 0.768 |
+| 5, a=0.7 | 0.526 | 0.816 | 0.921 | 0.921 | 0.696 |
 
-**hard (22 questions, 10 with two relevant documents)**
+**hard (26 questions, 12 with two relevant documents)**
 
 | terms | hit@1 | hit@3 | hit@5 | recall@5 | MRR |
 | --- | --- | --- | --- | --- | --- |
-| off | 0.500 | 0.864 | 0.909 | 0.773 | 0.653 |
-| 5, a=1.0 | 0.500 | 0.864 | 0.909 | 0.773 | 0.653 |
-| 3, a=0.9 | 0.500 | 0.818 | 0.909 | 0.773 | 0.659 |
-| 5, a=0.8 | 0.409 | 0.864 | 0.955 | 0.818 | 0.627 |
-| 5, a=0.7 | 0.318 | 0.864 | 0.955 | 0.818 | 0.573 |
+| off | 0.538 | 0.808 | 0.885 | 0.769 | 0.671 |
+| 5, a=1.0 | 0.538 | 0.808 | 0.885 | 0.769 | 0.671 |
+| 3, a=0.9 | 0.500 | 0.846 | 0.885 | 0.788 | 0.657 |
+| 5, a=0.8 | 0.462 | 0.846 | 0.885 | 0.788 | 0.623 |
+| 5, a=0.7 | 0.423 | 0.808 | 0.885 | 0.788 | 0.596 |
 
 `alpha = 1.0` puts all the weight on the original query, so nothing is borrowed
 and the ranking has to be identical to the unexpanded one. It is, on every one
-of the 56 questions - that row and the test behind it are the correctness check
+of the 64 questions - that row and the test behind it are the correctness check
 on this whole path, the same job `lambda = 1.0` does for MMR.
 
-The split is the result, and the grown corpus sharpened it. On the hard slice,
-five borrowed terms at `alpha = 0.8` still buy reach - recall@5 rises from
-0.773 to 0.818 and hit@5 from 0.909 to 0.955, and h18 ("why can what a system
-knows be changed without any training at all?") still goes from a complete miss
-at k=5 to a hit, because the feedback pass borrowed *grounding*, *faithfulness*
-and *relevant* from passages the plain question could not reach. But rank one
-now pays for it: hit@1 falls from 0.500 to 0.409 and MRR from 0.653 to 0.627,
-where on the smaller corpus expansion used to gain MRR here. Among the
-questions it newly loses at rank one is h22, one of the adjacent-topic
-additions - with a lexically similar neighbour document in the corpus, borrowed
-terms are likelier to pull toward the neighbour. On the easy slice the same
-setting costs four questions at rank one and 0.056 of MRR while moving recall
-not at all - those questions already shared vocabulary with their target, so
-every borrowed term is noise.
+The split is the result, and each round of corpus growth has narrowed the good
+side of it. On the hard slice, five borrowed terms at `alpha = 0.8` still buy
+something at rank three - hit@3 rises 0.808 -> 0.846 and recall@5 0.769 ->
+0.788 - and expansion is still the only lever in the repo that recovers h08 and
+h15 from a complete miss at k=5. But rank one pays for it: hit@1 falls 0.538 ->
+0.462 and MRR 0.671 -> 0.623. On the easy slice the same setting costs six
+questions at rank one and 0.100 of MRR while *losing* a question at k=5 - those
+questions already shared vocabulary with their target, so every borrowed term is
+noise.
+
+Two documents' worth of growth moved the operating point in a way worth
+recording, because it is the kind of thing a stale README hides. At 14
+documents, `alpha = 0.8` recovered h18 ("why can what a system knows be changed
+without any training at all?"). At 16 it does not: the feedback pool now
+contains `sparse-neural-retrieval` and `multi-hop-retrieval`, both of which
+discuss training and updating knowledge, and the terms borrowed from them pull
+h18 away from `rag`. Recovering h18 now takes `alpha = 0.7`, which costs three
+other questions. `tests/test_expansion.py` was re-pinned to h15 rather than
+loosened to keep the old assertion true.
 
 That is the textbook pseudo-relevance feedback trade-off, and this corpus
-reproduces it cleanly: expansion buys reach on paraphrased questions and pays
-for it in early precision on literal ones. It is **off by default** and exposed
-as `--expand`, because a mixed question set is a net loss on MRR and the right
-setting depends on whether the caller wants a top-1 answer or a k-passage
-context. Two cautions on reading the tables: the hard slice is 22 questions, so
-a 0.045 step is one question; and the feedback documents come from the same
-retriever being evaluated, so when the first pass is wrong, expansion
-confidently makes it wronger.
+reproduces it cleanly, including its instability: expansion buys reach on
+paraphrased questions, pays for it in early precision on literal ones, and which
+specific questions land on which side is a property of the corpus rather than of
+the method. It is **off by default** and exposed as `--expand`. Two cautions on
+reading the tables: the hard slice is 26 questions, so a 0.038 step is one
+question; and the feedback documents come from the same retriever being
+evaluated, so when the first pass is wrong, expansion confidently makes it
+wronger.
 
 ### Re-ranking: a second stage that reads the pair
 
 Fusion recalls far better than it precisely ranks. On the full gold set hit@5 is
-0.946 but hit@1 is only 0.696: for a quarter of the questions the answer is
+0.938 but hit@1 is only 0.703: for a quarter of the questions the answer is
 already in the pool and merely sitting in the wrong place. Nothing in the first
 stage can fix that, because BM25 and TF-IDF both score the query and the passage
 *independently* - they see which terms matched and how often, never where those
@@ -373,34 +388,34 @@ The second-stage score is blended with the min-max normalised first-stage score:
 
 | alpha | hit@1 | hit@3 | hit@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- |
-| off | 0.696 | 0.929 | 0.946 | 0.799 | 0.792 |
-| 1.0 | 0.696 | 0.929 | 0.946 | 0.799 | 0.792 |
-| 0.8 | 0.696 | 0.911 | 0.946 | 0.801 | 0.795 |
-| 0.6 | 0.714 | 0.893 | 0.946 | 0.808 | 0.808 |
-| **0.5** | **0.750** | 0.911 | **0.946** | **0.822** | **0.826** |
-| 0.4 | 0.750 | 0.893 | 0.946 | 0.820 | 0.824 |
-| 0.2 | 0.768 | 0.893 | 0.929 | 0.823 | 0.838 |
-| 0.0 | 0.750 | 0.911 | 0.946 | 0.822 | 0.835 |
+| off | 0.703 | 0.859 | 0.938 | 0.795 | 0.788 |
+| 1.0 | 0.703 | 0.859 | 0.938 | 0.795 | 0.788 |
+| 0.8 | 0.734 | 0.875 | **0.953** | 0.816 | 0.811 |
+| 0.6 | 0.750 | 0.875 | 0.938 | **0.817** | 0.821 |
+| **0.5** | **0.750** | 0.875 | 0.938 | 0.816 | **0.822** |
+| 0.4 | 0.766 | 0.859 | 0.922 | 0.815 | 0.822 |
+| 0.2 | 0.766 | 0.891 | 0.906 | 0.813 | 0.823 |
+| 0.0 | 0.734 | 0.891 | 0.922 | 0.809 | 0.817 |
 
 And on the hard slice, where the first stage has the most room:
 
 | alpha | hit@1 | hit@3 | hit@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- |
-| off | 0.500 | 0.864 | 0.909 | 0.636 | 0.653 |
-| 0.5 | 0.636 | 0.864 | 0.909 | 0.692 | 0.739 |
-| 0.2 | 0.682 | 0.864 | 0.909 | 0.719 | 0.782 |
+| off | 0.538 | 0.808 | 0.885 | 0.651 | 0.671 |
+| 0.5 | 0.615 | 0.808 | 0.923 | 0.692 | 0.724 |
+| 0.2 | 0.654 | 0.846 | 0.885 | 0.697 | 0.738 |
 
-This is the largest single-increment gain the project has measured: at
-alpha=0.5, hit@1 goes 0.696 -> 0.750 and MRR 0.792 -> 0.826 with hit@5
-completely unchanged, and on the hard slice hit@1 goes 0.500 -> 0.636. The
-mechanism is exactly the one predicted - it converts recall the first stage
-already had into precision at rank one.
+This remains the largest single-increment gain the project has measured, and it
+survived the corpus growing: at alpha=0.5, hit@1 goes 0.703 -> 0.750 and MRR
+0.788 -> 0.822, and on the hard slice hit@1 goes 0.538 -> 0.615 while hit@5
+*rises* 0.885 -> 0.923. The mechanism is exactly the one predicted - it converts
+recall the first stage already had into precision at rank one.
 
 Read the trade-off honestly. Leaning harder on the second stage (alpha <= 0.2)
-buys another 0.018 hit@1 and gives back hit@5 (0.946 -> 0.929): a re-ranker
+buys another 0.016 hit@1 and gives back hit@5 (0.938 -> 0.906): a re-ranker
 reorders the pool, it cannot enlarge it, so pushing it too far shuffles a
-correct answer out of the top five. The easy slice barely moves at rank one
-(0.824 throughout - it is saturated) and loses a little at hit@3/hit@5, which is
+correct answer out of the top five. The easy slice moves less at rank one
+(0.816 -> 0.868 at its best) and gives back hit@5 below alpha=0.6, which is
 the same story: positional features help most where the wording differs. alpha
 is 0.5 by default for that reason, and the stage is **off by default** and
 exposed as `--rerank`, on the same principle as `--expand`. `alpha = 1.0`
@@ -416,7 +431,7 @@ words, and both are therefore blind to exactly the same things - `quantise` and
 `quantisation` are unrelated symbols to either of them, so is `reranking`
 against `re-ranking`, and one transposed letter is a total miss. Fusing two
 retrievers that share a blind spot cannot see into it, which is the structural
-reason the `rrf_k` sweep found nothing to tune: the two lists agree on 0.854 of
+reason the `rrf_k` sweep found nothing to tune: the two lists agree on 0.869 of
 their top-5 by chunk, and a fusion constant has no room to arbitrate lists that
 already concur.
 
@@ -435,33 +450,34 @@ python evals/tune.py --ngram 4        # re-sweep rrf_k against three lists
 ```
 
 Adding it drops the mean pairwise top-5 overlap between the fused lists from
-0.854 to 0.693, which is the mechanism working: the third list is contributing
+0.869 to 0.682, which is the mechanism working: the third list is contributing
 a genuinely different opinion rather than a paraphrase of an existing one.
 `hybrid2` is the shipped two-list fusion, `ngram` is the n-gram list alone and
 `hybrid3` is all three fused.
 
-**all 56 questions, k=5**
+**all 64 questions, k=5**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid2 | 0.696 | 0.929 | 0.946 | 0.893 | 0.799 | 0.792 |
-| **ngram** | **0.768** | **0.964** | **0.982** | **0.973** | **0.868** | **0.849** |
-| hybrid3 | 0.714 | 0.911 | 0.982 | 0.938 | 0.834 | 0.821 |
+| hybrid2 | 0.703 | 0.859 | 0.938 | 0.891 | 0.795 | 0.788 |
+| **ngram** | **0.766** | **0.922** | **0.953** | **0.945** | **0.854** | **0.840** |
+| hybrid3 | 0.734 | 0.891 | 0.938 | 0.898 | 0.824 | 0.818 |
 
-**hard slice (22 questions, 10 with two relevant documents)**
+**hard slice (26 questions, 12 with two relevant documents)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid2 | 0.500 | 0.864 | 0.909 | 0.773 | 0.636 | 0.653 |
-| **ngram** | **0.636** | **0.909** | **0.955** | **0.932** | **0.765** | **0.752** |
-| hybrid3 | 0.545 | 0.818 | 0.955 | 0.841 | 0.698 | 0.708 |
+| hybrid2 | 0.538 | 0.808 | 0.885 | 0.769 | 0.651 | 0.671 |
+| **ngram** | **0.615** | 0.808 | 0.885 | **0.865** | **0.728** | **0.722** |
+| hybrid3 | 0.577 | 0.808 | 0.885 | 0.788 | 0.690 | 0.705 |
 
 **The result is the largest this project has measured, and it is not the result
 the experiment was designed to find.** The n-gram list was added as a third
-input to the fusion. It beats the fusion - alone, on every column, on every
-slice. Against `hybrid2` on the hard questions it takes hit@1 from 0.500 to
-0.636 and recall@5 from 0.773 to 0.932, which is three and a half of
-twenty-two questions where the answer was simply not in the top five before.
+input to the fusion. It beats the fusion - alone, on every column of the all
+slice and on every column of the hard slice bar the two the three methods tie
+on. Against `hybrid2` on the hard questions it takes hit@1 from 0.538 to 0.615
+and recall@5 from 0.769 to 0.865, which is two and a half of twenty-six
+questions where the answer was simply not in the top five before.
 
 **And `hybrid3` lands between its inputs, which is the finding worth keeping.**
 Fusing the strong list with the two weaker ones is *worse than the strong list
@@ -475,18 +491,19 @@ retrieval gets better - is the thing this table refutes. What made retrieval
 better was changing the representation; the fusion then gave part of it back.
 
 Two cautions before anyone reads this as "character n-grams beat words". The
-first is arithmetic: 56 questions, so the 0.072 gap in hit@1 is four questions,
-and the hard slice is 22, where one question is 0.045. The second is
+first is arithmetic: 64 questions, so the 0.063 gap in hit@1 is four questions,
+and the hard slice is 26, where one question is 0.038. The second is
 structural, and it matters more. The mechanism that wins here - partial credit
 for shared substrings - is the same mechanism that should *lose* on a corpus of
 lexically similar documents, because n-grams blur distinctions that whole words
-preserve. Fourteen documents on visibly different topics is close to the
-friendliest case this idea will ever get, and the two adjacent-topic documents
-added earlier (`late-interaction.md` beside `reranking.md`) are the only
-pressure on it in the whole corpus. The honest claim is "on this corpus,
-character 4-grams retrieve better than words", and the experiment that would
-promote it to something stronger is a corpus with far more near-neighbours in
-it.
+preserve. Sixteen documents on largely different topics is still close to the
+friendliest case this idea will ever get, though the pressure is building: four
+of the sixteen were placed deliberately beside a lexical neighbour, and the
+n-gram list's hard-slice margin has narrowed with each pair added (hit@1 +0.136
+over hybrid2 at 14 documents, +0.077 at 16). The honest claim is "on this
+corpus, character 4-grams retrieve better than words", the trend is in the
+direction the structural argument predicts, and the experiment that would settle
+it is a corpus with far more near-neighbours in it.
 
 It is therefore **off by default** and exposed as `--ngram N`, on the same
 principle as `--expand` and `--rerank`, and for the same reason `150:40`
@@ -497,9 +514,9 @@ it fits a third index - so a saved index cannot gain one by flag, and `--ngram`
 against an index built without it fails loudly rather than answering from a
 two-list fusion nobody asked for.
 
-The cost is real and small in absolute terms: 3,924 gram features against 1,345
-word features (2.9x), a 0.4 MB index file becoming 1.0 MB, and fitting slowing
-from 0.004s to 0.014s on this corpus. Denser vectors are also why the list is
+The cost is real and small in absolute terms: 4,293 gram features against 1,512
+word features (2.8x), a 0.4 MB index file becoming 1.0 MB, and fitting slowing
+from 0.003s to 0.015s on this corpus. Denser vectors are also why the list is
 noisier per-match - most English 4-grams are common, so everything matches
 everything a little - which is what makes the standalone result surprising
 rather than obvious.
@@ -507,8 +524,8 @@ rather than obvious.
 ### Weighted RRF: acting on "the third list is the best list"
 
 The n-gram section ends on an uncomfortable number. The character n-gram list
-*alone* scores nDCG@5 0.868, while the three-list fusion that contains it
-scores 0.834. Textbook RRF weights every list identically, so the fusion is
+*alone* scores nDCG@5 0.854, while the three-list fusion that contains it
+scores 0.824. Textbook RRF weights every list identically, so the fusion is
 averaging its best retriever with two worse ones and landing between them.
 That is not a bug in RRF; it is RRF doing exactly what it promises, on inputs
 that violate the assumption behind the promise.
@@ -529,36 +546,39 @@ threshold - both calibrated against fused-score magnitudes - do not silently
 need re-tuning when the ratios change. A list left out of the spec keeps
 weight 1.0 ("no opinion"); weight it `0` to drop it.
 
-Sweeping the weight on the n-gram list, over all 56 gold questions at k=5:
+Sweeping the weight on the n-gram list, over all 64 gold questions at k=5:
 
 | weights | hit@1 | ndcg@5 | recall@5 | MRR |
 | --- | --- | --- | --- | --- |
-| uniform (plain RRF) | 0.714 | 0.834 | 0.938 | 0.821 |
-| `ngram=2` | 0.714 | 0.838 | 0.938 | 0.827 |
-| `ngram=3` | 0.750 | 0.847 | 0.938 | 0.844 |
-| **`ngram=4`** | **0.768** | **0.858** | **0.946** | **0.853** |
-| `ngram=6` | 0.768 | 0.855 | 0.946 | 0.849 |
-| ngram only (control) | 0.768 | 0.868 | 0.973 | 0.849 |
+| uniform (plain RRF) | 0.734 | 0.824 | 0.898 | 0.818 |
+| `ngram=2` | 0.766 | 0.846 | 0.922 | 0.839 |
+| `ngram=3` | 0.766 | 0.848 | 0.922 | 0.842 |
+| **`ngram=4`** | **0.781** | 0.849 | 0.906 | **0.848** |
+| `ngram=6` | 0.781 | 0.848 | 0.914 | 0.845 |
+| ngram only (control) | 0.766 | **0.854** | **0.945** | 0.840 |
 
 The gain concentrates in the hard slice, which is where fusion was supposed to
-earn its keep: nDCG@5 0.698 → 0.736 and hit@1 0.545 → 0.636 at `ngram=4`.
+earn its keep: nDCG@5 0.690 → 0.709 and hit@1 0.577 → 0.654 at `ngram=4`.
 
 Two honest readings of that table, both of which matter more than the win:
 
-**None of it is significant.** Run through `evals/significance.py`, `ngram=4`
-against uniform is +0.025 nDCG@5 with a 95% interval of [-0.010, +0.064] and
-p=0.205 - won 9 questions, lost 5, tied 42. hit@1 is +0.054 with 5 wins and 2
-losses. On 56 questions a handful of queries is the entire effect, and the
-interval includes zero on every metric. This is the same lesson the error-bars
-section drew about the ablation table, and it applies to the feature that
-section motivated.
+**None of it is significant.** Run through the same paired bootstrap that
+`evals/significance.py` uses, `ngram=4` against uniform is +0.025 nDCG@5 with a
+95% interval of [-0.014, +0.067] and p=0.232 - won 9 questions, lost 5, tied
+50. hit@1 is +0.047 with 5 wins and 2 losses, interval [-0.031, +0.125]. On 64
+questions a handful of queries is still the entire effect, and the interval
+includes zero on every metric and every slice. Eight more questions did not
+change that, which is itself informative: the gold set would have to grow a
+great deal further before this comparison could resolve.
 
-**The control still wins.** `ngram only` beats every weighted fusion on nDCG@5
-(0.868) and recall@5 (0.973). Weighting recovers most of the gap uniform RRF
-opened, but it does not close it. The defensible conclusion is not "weighted
-RRF is better" - it is that *on this corpus, at this size, fusion has not been
-shown to beat its own best input*, and the weight knob makes that visible
-rather than hiding it behind a fused default.
+**The control still wins where it matters.** `ngram only` beats every weighted
+fusion on nDCG@5 (0.854) and recall@5 (0.945); weighting now takes hit@1 and
+MRR, which it did not at 14 documents. Weighting recovers most of the gap
+uniform RRF opened, but it does not close it. The defensible conclusion is not
+"weighted RRF is better" - it is that *on this corpus, at this size, fusion has
+not been shown to beat its own best input on the reach and ordering metrics*,
+and the weight knob makes that visible rather than hiding it behind a fused
+default.
 
 So the shipped default stays uniform. A non-significant delta measured against
 a control that still wins is not grounds for changing what the engine does by
@@ -571,29 +591,32 @@ The tuning section above closed with a claim it could not test: that `rrf_k`
 that disagree more than BM25 and TF-IDF do here - and the honest version of
 that claim is that this corpus cannot demonstrate it. **It can now**: adding a
 third, structurally different list moves `rrf_k = 1` from 5 changed orderings
-to 26, and the sweep is repeated under "`rrf_k` was not inert" below." The third list is the
+to 36, and the sweep is repeated under "`rrf_k` was not inert" below." The third list is the
 experiment that demonstrates it. Same corpus, same gold set, same sweep, one
 more ranked list:
 
 | rrf_k | hit@1 | hit@3 | hit@5 | nDCG@5 | MRR | changed (2 lists) | changed (3 lists) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 0.714 | 0.893 | 0.964 | 0.822 | 0.812 | 5 | **26** |
-| 5 | 0.714 | 0.911 | 0.964 | 0.826 | 0.817 | 2 | 21 |
-| 10 | 0.714 | **0.929** | 0.982 | **0.835** | **0.823** | 1 | 12 |
-| 20 | 0.714 | **0.929** | 0.982 | **0.835** | **0.823** | 0 | 8 |
-| **60** (default) | 0.714 | 0.911 | 0.982 | 0.834 | 0.821 | 0 | 0 |
-| 200 | 0.714 | 0.911 | 0.982 | 0.834 | 0.821 | 0 | 0 |
-| 1000 | 0.714 | 0.911 | 0.982 | 0.834 | 0.821 | 0 | 0 |
+| 1 | 0.719 | **0.906** | **0.953** | 0.826 | 0.816 | 5 | **36** |
+| 5 | **0.734** | **0.906** | **0.953** | **0.829** | **0.821** | 2 | 24 |
+| 10 | **0.734** | 0.891 | **0.953** | 0.828 | 0.819 | 0 | 15 |
+| 20 | **0.734** | 0.891 | 0.938 | 0.824 | 0.818 | 0 | 7 |
+| **60** (default) | **0.734** | 0.891 | 0.938 | 0.824 | 0.818 | 0 | 0 |
+| 200 | **0.734** | 0.891 | 0.938 | 0.824 | 0.818 | 0 | 2 |
+| 1000 | **0.734** | 0.891 | 0.938 | 0.824 | 0.818 | 0 | 3 |
 
-With two lists, every value at or above 20 returned byte-identical orderings on
-all 56 questions and the accuracy columns never moved. With three, `rrf_k = 1`
-reorders 26 of 56 - half the gold set - and the sweep develops a shape: low
-values over-reward whichever list ranked something first and cost hit@3, and
-`rrf_k` of 10 to 20 beats the default on hit@3 (0.929 against 0.911) and edges
-nDCG@5 and MRR. The gains are one question wide and not worth changing a
-default over. The point is not the gain, it is that the earlier "there was
-nothing to tune" was a statement about the *inputs* rather than about the knob,
-and it took a genuinely different list to tell those two explanations apart.
+With two lists, every value at or above 10 returned byte-identical orderings on
+all 64 questions and the accuracy columns never moved. With three, `rrf_k = 1`
+reorders 36 of 64 - well over half the gold set - and the sweep develops a
+shape: `rrf_k` of 5 beats the default on hit@3 (0.906 against 0.891), hit@5 and
+recall@5, and edges nDCG@5 and MRR, while `rrf_k = 1` swings too far and gives
+back hit@1. The gains are one question wide and not worth changing a default
+over. The point is not the gain, it is that the earlier "there was nothing to
+tune" was a statement about the *inputs* rather than about the knob, and it
+took a genuinely different list to tell those two explanations apart. Note that
+the largest values now change 2 and 3 orderings rather than 0 - with sixteen
+documents there are finally a few questions where the ranks are far enough apart
+for the Borda limit to differ from the default.
 
 ### Diversity: MMR re-ranking
 
@@ -601,7 +624,7 @@ Accuracy metrics cannot see redundancy. A top-5 made of five paraphrases of one
 passage scores exactly the same as five complementary ones, but it is worth far
 less to an answerer. This corpus makes the problem concrete: the chunker
 overlaps adjacent chunks on purpose, so neighbouring chunks are near-copies and
-the unmodified top-5 spans only 3.7 of a possible 5 documents.
+the unmodified top-5 spans only 3.8 of a possible 5 documents.
 
 `ragkb/rerank.py` implements Maximal Marginal Relevance (Carbonell & Goldstein,
 SIGIR 1998), selecting greedily on
@@ -613,29 +636,29 @@ meaningful for RRF scores near 1/60 and raw BM25 scores alike.
 python -m ragkb.cli --mmr 0.7 search "how does BM25 saturate term frequency"
 ```
 
-Sweeping lambda over all 56 questions at k=5 (`redundancy` is the mean
+Sweeping lambda over all 64 questions at k=5 (`redundancy` is the mean
 pairwise cosine within a result set; `distinct` is how many documents it spans):
 
 | lambda | hit@1 | hit@5 | MRR | redundancy | distinct |
 | --- | --- | --- | --- | --- | --- |
-| off | 0.696 | 0.946 | 0.792 | 0.140 | 3.70 |
-| 1.0 | 0.696 | 0.946 | 0.792 | 0.140 | 3.70 |
-| 0.9 | 0.696 | 0.946 | 0.788 | 0.138 | 3.73 |
-| 0.7 | 0.696 | 0.929 | 0.783 | 0.116 | 4.14 |
-| 0.5 | 0.696 | 0.946 | 0.787 | 0.105 | 4.38 |
-| 0.3 | 0.696 | 0.946 | 0.778 | 0.093 | 4.63 |
+| off | 0.703 | 0.938 | 0.788 | 0.134 | 3.78 |
+| 1.0 | 0.703 | 0.938 | 0.788 | 0.134 | 3.78 |
+| 0.9 | 0.703 | 0.938 | 0.785 | 0.130 | 3.89 |
+| 0.7 | 0.703 | 0.938 | 0.780 | 0.115 | 4.22 |
+| 0.5 | 0.703 | 0.938 | 0.775 | 0.102 | 4.52 |
+| 0.3 | 0.703 | 0.906 | 0.765 | 0.091 | 4.70 |
 
 `lambda = 1.0` reproduces the unmodified ranking exactly, which is the cheapest
-available correctness check on the implementation. Growing the corpus moved the
-sweet spot. `lambda = 0.7`, previously the recommended operating point, now
-drops one question at hit@5: with fourteen documents, including two written to
-sit lexically close to existing ones, MMR has more plausible-but-wrong
-neighbours to promote in place of a relevant chunk. `lambda = 0.5` is the
-better point on this set - redundancy falls 25% and the result set covers 18%
-more documents while hit@1 and hit@5 are unchanged and MRR gives up 0.005.
-That the optimum shifts when the corpus changes is itself the argument for
-shipping the sweep rather than a tuned constant, so re-ranking stays **off by
-default** and the trade-off is a flag rather than a hidden number.
+available correctness check on the implementation. The sweet spot has moved with
+the corpus twice now, which is the finding. At 14 documents `lambda = 0.7`
+dropped a question at hit@5 and 0.5 was the better point. At 16 the accuracy
+columns are flat from 1.0 all the way down to 0.5 - hit@1 and hit@5 do not move
+at all - and only `lambda = 0.3` finally costs two questions at hit@5. So the
+whole 0.9-to-0.5 band is now free: redundancy falls 24% and the result set
+covers 20% more documents for 0.013 of MRR and nothing else. That the optimum
+keeps shifting when the corpus changes is the argument for shipping the sweep
+rather than a tuned constant, so re-ranking stays **off by default** and the
+trade-off is a flag rather than a hidden number.
 
 ### Failure analysis: which misses, and what would fix them
 
@@ -652,35 +675,36 @@ python evals/failures.py
 python evals/failures.py --method bm25 -k 3 --slice hard
 ```
 
-Ten of the sixty-six (question, relevant document) pairs are missed at k=5.
+Eleven of the seventy-six (question, relevant document) pairs are missed at k=5.
 
 | id | slice | document | hybrid | bm25 | vector | coverage | category |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| q15 | easy | evaluation | 8 | 8 | 6 | 0.44 | near-miss |
-| h01 | hard | embeddings | 14 | 14 | 14 | 0.28 | deep-miss |
-| h02 | hard | bm25 | 11 | 11 | 11 | 0.38 | deep-miss |
-| h03 | hard | tfidf | 14 | 14 | 14 | 0.36 | deep-miss |
-| h05 | hard | chunking | 10 | 10 | 10 | 0.39 | near-miss |
-| h05 | hard | evaluation | 9 | 9 | 9 | 0.33 | near-miss |
+| q15 | easy | evaluation | 10 | 9 | 7 | 0.44 | near-miss |
+| h01 | hard | embeddings | 16 | 16 | 16 | 0.28 | deep-miss |
+| h02 | hard | bm25 | 13 | 13 | 12 | 0.38 | deep-miss |
+| h03 | hard | tfidf | 16 | 16 | 16 | 0.36 | deep-miss |
+| h05 | hard | chunking | 12 | 12 | 12 | 0.39 | deep-miss |
+| h05 | hard | evaluation | 11 | 11 | 11 | 0.33 | deep-miss |
 | h08 | hard | reranking | 8 | 8 | 7 | 0.39 | near-miss |
-| h18 | hard | rag | 7 | 7 | 7 | 0.54 | near-miss |
-| h20 | hard | reranking | 8 | 8 | 8 | 0.37 | near-miss |
+| h15 | hard | rank-fusion | 8 | 7 | 6 | 0.62 | near-miss |
+| h18 | hard | rag | 9 | 9 | 9 | 0.54 | near-miss |
+| h20 | hard | reranking | 10 | 10 | 10 | 0.37 | near-miss |
 | h22 | hard | reranking | 7 | 7 | 7 | 0.28 | near-miss |
 
 **Not one of them is a fusion loss**, and the column that proves it is the one
-that would otherwise look like padding. In eight of the ten rows the fused rank
-is *identical* to both component ranks; in the other two (q15, h08) TF-IDF had
-it one or two places higher and the fusion still landed on BM25's rank, which is
-a fusion failing to *improve* on a component, not one discarding what a
-component found - and neither component had it inside k either. Nothing here is
-RRF throwing away a document BM25 or TF-IDF had
-already found, so the `fusion-loss` count is zero on every slice. That is worth
-stating plainly because the fusion is the newest large moving part and the
-obvious thing to blame, and the obvious thing is wrong.
+that would otherwise look like padding. In eight of the eleven rows the fused
+rank is *identical* to both component ranks; in the other three (q15, h08, h15)
+TF-IDF had it one or two places higher and the fusion still landed on or below
+BM25's rank, which is a fusion failing to *improve* on a component, not one
+discarding what a component found - and neither component had it inside k
+either. Nothing here is RRF throwing away a document BM25 or TF-IDF had already
+found, so the `fusion-loss` count is zero on every slice. That is worth stating
+plainly because the fusion is the newest large moving part and the obvious thing
+to blame, and the obvious thing is wrong.
 
 The `coverage` column - the share of the question's distinct terms that occur
-anywhere in the document - says why. It never exceeds 0.54 and averages 0.38.
-These are the hard-slice questions written to avoid the target document's own
+anywhere in the document - says why. It never exceeds 0.62 and averages 0.40.
+These are mostly hard-slice questions written to avoid the target document's own
 vocabulary, and both retrievers index whole words, so they are two scores over
 one representation that cannot see what neither can match. Blaming the fusion
 for agreeing is blaming it for arithmetic.
@@ -691,57 +715,64 @@ k=5):
 
 | id | document | expansion | rerank | mmr | hybrid3 | ngram-only |
 | --- | --- | --- | --- | --- | --- | --- |
-| q15 | evaluation | 7 | 9 | 8 | 4* | 1* |
-| h01 | embeddings | 14 | 14 | 14 | 14 | 14 |
-| h02 | bm25 | 10 | 11 | 11 | 10 | 5* |
-| h03 | tfidf | 13 | 14 | 14 | 14 | 5* |
-| h05 | chunking | 8 | 10 | 8 | 11 | 11 |
-| h05 | evaluation | 11 | 9 | 11 | 10 | 10 |
-| h08 | reranking | 11 | 8 | 8 | 6 | 4* |
-| h18 | rag | 5* | 7 | 9 | 4* | 3* |
-| h20 | reranking | 11 | 8 | 9 | 6 | 5* |
-| h22 | reranking | 12 | 7 | 7 | 3* | 2* |
-| | **recovered** | 1/10 | 0/10 | 0/10 | 3/10 | **7/10** |
+| q15 | evaluation | 12 | 10 | 9 | 6 | 1* |
+| h01 | embeddings | 16 | 16 | 16 | 16 | 16 |
+| h02 | bm25 | 11 | 13 | 12 | 12 | 5* |
+| h03 | tfidf | 16 | 16 | 16 | 14 | 4* |
+| h05 | chunking | 11 | 12 | 11 | 13 | 13 |
+| h05 | evaluation | 15 | 11 | 13 | 12 | 12 |
+| h08 | reranking | 5* | 7 | 8 | 6 | 4* |
+| h15 | rank-fusion | 3* | 4* | 8 | 4* | 2* |
+| h18 | rag | 5* | 10 | 10 | 6 | 5* |
+| h20 | reranking | 13 | 10 | 10 | 7 | 4* |
+| h22 | reranking | 11 | 7 | 7 | 3* | 2* |
+| | **recovered** | 3/11 | 1/11 | 0/11 | 2/11 | **8/11** |
 
-**The character n-gram list alone recovers seven of the ten failures the word
+**The character n-gram list alone recovers eight of the eleven failures the word
 retrievers share.** It is the only lever in the repo that changes the
 *representation* rather than re-scoring or re-ordering the same one, and this is
-the sharpest statement of that difference the project has produced: re-ranking
-recovers nothing, because re-ordering a pool cannot admit a document the pool
-never contained, and MMR recovers nothing for the same structural reason. Both
-were already known to be pool-bound in principle; here it is in the only
-arithmetic that can show it.
+the sharpest statement of that difference the project has produced: MMR recovers
+nothing at all and re-ranking recovers one, because re-ordering a pool cannot
+admit a document the pool never contained. Both were already known to be
+pool-bound in principle; here it is in the only arithmetic that can show it.
+
+Expansion is the row that moved with the corpus. At 14 documents it recovered
+one failure; at 16 it recovers three (h08, h15, h18) - but h18 is recovered here
+at `alpha=0.7`, which is not the shipped setting, and the same three-recovery
+column costs questions elsewhere. It is a lever with a wide variance, not a
+lever that got better.
 
 It also explains a result from the section above that had been left as a
 curiosity. The three-list table showed `ngram` beating `hybrid3` outright on the
-hard slice (hit@1 0.636 vs 0.545, MRR 0.752 vs 0.708), which reads as a fusion
+hard slice (hit@1 0.615 vs 0.577, MRR 0.722 vs 0.705), which reads as a fusion
 that dilutes its best member. This table is the same fact at question
 granularity: on the pairs where the word lists both fail, the n-gram list is
-carrying seven rescues and fusion averages three of them back out against two
-word lists that ranked the document tenth.
+carrying eight rescues and fusion averages six of them back out against two word
+lists that ranked the document twelfth.
 
 What survives every lever is the backlog:
 
 ```
 nothing in the repo recovers these:
-  h01 -> embeddings (rank 14, coverage 0.28): If someone writes automobiles but
+  h01 -> embeddings (rank 16, coverage 0.28): If someone writes automobiles but
          the page only ever says cars, what kind of search still finds it?
-  h05 -> chunking (rank 10, coverage 0.39): How do I decide how much text to put
+  h05 -> chunking (rank 12, coverage 0.39): How do I decide how much text to put
          in each piece, and how would I know the choice was right?
-  h05 -> evaluation (rank 9, coverage 0.33)
+  h05 -> evaluation (rank 11, coverage 0.33)
 ```
 
-`h01` is the honest one, and it is dead last of fourteen under all five
+`h01` is the honest one, and it is dead last of sixteen under all five
 configurations. The question asks for the retrieval method that survives a
 synonym, using a car/automobile analogy the corpus never uses; the answer is in
 `embeddings.md`, which never says either word. Character n-grams fix
 *morphology* - "controls" against "control" - not synonymy, so the one lever
-that rescues the other seven cannot touch this. Nothing short of a semantic
+that rescues the other eight cannot touch this. Nothing short of a semantic
 representation will, which makes `h01` a fair statement of where a
 dependency-free design actually stops rather than a bug to be tuned away. `h05`
 is a different shape: one question with two relevant documents, both stuck in
-the rank 9-11 band, where every lever moves it a place or two and none moves it
-five.
+the rank 11-13 band, where every lever moves it a place or two and none moves it
+seven. It got *worse* with the corpus, which is what a rank-based backlog does
+when the collection grows and the question still matches nothing.
 
 ### Attribution: which terms actually produced that score
 
@@ -776,20 +807,20 @@ $ python -m ragkb.cli explain \
     "Why can what a system knows be changed without any training at all?" \
     --doc rag --terms 5
 
-#9  [rag]  rag::1  score=0.02920
+#11  [rag]  rag::1  score=0.02837
 
 fusion (rrf_k=60):
-  bm25         rank 8  1/(60+8) = 0.014706
-  vector       rank 9  1/(60+9) = 0.014493
-  total                          0.029199
+  bm25        rank 10  1/(60+10) = 0.014286
+  vector      rank 11  1/(60+11) = 0.014085
+  total                          0.028370
 
-bm25 score 5.54818 (top 5 of 5 matched terms)
+bm25 score 5.44620 (top 5 of 5 matched terms)
   term                    qw      tf      df       idf     contrib
-  system               1.000       1       7     2.046     1.91415
-  be                   1.000       2      19     1.090     1.48440
-  can                  1.000       3      28     0.711     1.14073
-  at                   1.000       1      20     1.040     0.97322
-  a                    1.000       2      56     0.026     0.03568
+  system               1.000       1       8     2.108     1.98125
+  be                   1.000       2      27     0.934     1.27621
+  can                  1.000       3      35     0.679     1.09264
+  at                   1.000       1      22     1.135     1.06652
+  a                    1.000       2      68     0.022     0.02959
   missing from this chunk: all, any, training, what, why, without
   not in the corpus at all: changed, knows
 ```
@@ -850,19 +881,22 @@ python evals/faithfulness_eval.py
 
 | k | sentence grounding | token grounding | citation precision | citation recall | cited gold |
 | --- | --- | --- | --- | --- | --- |
-| 3 | 1.000 | 1.000 | 1.000 | 1.000 | 0.857 |
-| 4 | 1.000 | 1.000 | 1.000 | 1.000 | 0.857 |
-| 5 | 1.000 | 1.000 | 1.000 | 1.000 | 0.821 |
+| 3 | 1.000 | 1.000 | 1.000 | 1.000 | 0.812 |
+| 4 | 1.000 | 1.000 | 1.000 | 1.000 | 0.812 |
+| 5 | 1.000 | 1.000 | 1.000 | 1.000 | 0.812 |
 
 `cited gold` is the only column that uses the labels: the share of answers
 citing a document the gold set marks relevant. It fell from 0.900 to 0.792 when
 the hard questions were added - the correct direction, since retrieval misses
-more of them, so more answers are built from the wrong passages - and recovered
-to 0.857 when the corpus grew to fourteen documents, because the eight new
-questions are retrieved and cited correctly. The
-grounding and citation columns stayed at 1.000 throughout, which is the
-distinction the measure exists to draw - the answerer is not less faithful, it
-is being handed worse evidence.
+more of them, so more answers are built from the wrong passages - recovered to
+0.857 at fourteen documents, and has settled at 0.812 at sixteen. That last
+step down is the honest reading of this increment: the eight questions added
+here are retrieved slightly worse than the corpus average, which is what a gold
+set is for. The grounding and citation columns stayed at 1.000 throughout, which
+is the distinction the measure exists to draw - the answerer is not less
+faithful, it is being handed worse evidence. Note also that `cited gold` no
+longer varies with k, where it used to drop at k=5: the extra passage no longer
+displaces a gold citation.
 
 The measure earned its place on the first run by failing. Sentence grounding
 came back at 0.967 rather than 1.000, and the cause was real: markdown headings
@@ -917,8 +951,8 @@ questions can only ever measure false alarms. `evals/unanswerable.jsonl` holds
 eighteen questions the corpus genuinely does not cover, split deliberately:
 
 - **off-domain** (6) - Kubernetes, Raft, the GIL. Different subject entirely.
-- **near-domain** (12) - SPLADE, dense-passage-retrieval training objectives,
-  sharding a search cluster. Information retrieval questions this corpus
+- **near-domain** (12) - dense-passage-retrieval training objectives, sharding a
+  search cluster, click models. Information retrieval questions this corpus
   happens not to answer.
 
 The split is the point of the file. Off-domain questions are built from words
@@ -927,37 +961,51 @@ are assembled almost entirely from vocabulary the corpus knows, so they are the
 only rows that say anything. Reporting one pooled number would be flattered by
 the easy half.
 
+**This file is a maintenance liability, and growing the corpus proved it.**
+`u09` used to ask how SPLADE learns sparse term weights - a textbook
+near-domain question right up until `sparse-neural-retrieval.md` was added,
+which answers it in a paragraph. It was still labelled unanswerable, and the
+eval duly reported the gate "wrongly answering" the highest-scoring near-domain
+question in the set. Nothing failed loudly: a mislabelled row just quietly makes
+the abstention numbers wrong in the flattering direction. `u09` is now a click
+model question, which the corpus genuinely does not cover. Every future corpus
+addition has to be checked against this file, because unlike `gold.jsonl` -
+where `tests/test_gold.py` asserts that every referenced document exists - there
+is no test that can catch a question becoming answerable.
+
 ```bash
 python evals/abstention_eval.py
 ```
 
-Mean score: **0.455** answerable, **0.256** near-domain, **0.111** off-domain.
+Mean score: **0.447** answerable, **0.261** near-domain, **0.111** off-domain.
 
 | threshold | answer rate | abstain off | abstain near | accuracy | balanced | caught misses | lost hits |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0.00 | 1.000 | 0.000 | 0.000 | 0.757 | 0.500 | 0.000 | 0.000 |
-| 0.20 | 0.982 | 0.667 | 0.250 | 0.838 | 0.686 | 0.250 | 0.000 |
-| 0.24 | 0.946 | 1.000 | 0.500 | 0.878 | 0.807 | 0.500 | 0.019 |
-| **0.28** | **0.857** | **1.000** | **0.667** | 0.838 | **0.817** | 0.500 | 0.115 |
-| 0.30 | 0.768 | 1.000 | 0.750 | 0.784 | 0.801 | 1.000 | 0.173 |
-| 0.36 | 0.625 | 1.000 | 0.917 | 0.703 | 0.785 | 1.000 | 0.327 |
-| 0.50 | 0.393 | 1.000 | 0.917 | 0.527 | 0.669 | 1.000 | 0.577 |
+| 0.00 | 1.000 | 0.000 | 0.000 | 0.780 | 0.500 | 0.000 | 0.000 |
+| 0.20 | 0.984 | 0.667 | 0.167 | 0.841 | 0.659 | 0.143 | 0.000 |
+| 0.24 | 0.953 | 1.000 | 0.500 | **0.890** | 0.810 | 0.286 | 0.018 |
+| **0.28** | **0.859** | **1.000** | **0.667** | 0.841 | **0.819** | 0.429 | 0.105 |
+| 0.30 | 0.766 | 1.000 | 0.667 | 0.768 | 0.772 | 0.857 | 0.158 |
+| 0.36 | 0.609 | 1.000 | 0.833 | 0.671 | 0.749 | 0.857 | 0.333 |
+| 0.50 | 0.359 | 1.000 | 1.000 | 0.500 | 0.680 | 1.000 | 0.596 |
 
 The shipped default is **0.28**, chosen on balanced accuracy rather than pooled
-accuracy. Pooled accuracy peaks at 0.878 with a gate that declines only half
-the near-domain questions, and it would peak higher still on a set with more
-answerable questions in it - there are three times as many here, so the pooled
-column mostly rewards answering everything. Balanced accuracy weights the two
-error types equally and picks 0.28: every off-domain question declined, two
-thirds of the near-domain ones, and 86% of answerable questions still answered.
+accuracy, and it survived the corpus growing - which is more than the chunking
+default or the MMR sweet spot managed. Pooled accuracy peaks at 0.890 with a
+gate that declines only half the near-domain questions, and it would peak higher
+still on a set with more answerable questions in it - there are more than three
+times as many here, so the pooled column mostly rewards answering everything.
+Balanced accuracy weights the two error types equally and picks 0.28: every
+off-domain question declined, two thirds of the near-domain ones, and 86% of
+answerable questions still answered.
 
-The last two columns are the ones worth arguing about. Four of the 56
+The last two columns are the ones worth arguing about. Seven of the 64
 answerable questions are ones retrieval already misses at k=4 - it returns
 chunks, none from a relevant document - and on those the ideal gate abstains
 too, because answering from evidence that does not contain the answer is the
 same failure whether or not the corpus *could* have answered it. At 0.28 the
-gate declines half of those misses and 12% of the questions retrieval got
-right. Push to 0.30 and it catches all four, at the cost of throwing away 17%
+gate declines 43% of those misses and 11% of the questions retrieval got
+right. Push to 0.30 and it catches 86% of them, at the cost of throwing away 16%
 of good retrievals. Neither is obviously correct; which one is depends on what
 a wrong answer costs, which is why the gate is off by default and the threshold
 is a flag.
@@ -982,18 +1030,18 @@ without sinking it - `what does the b parameter control in bm25` still scores
 exists to fix for retrieval, and the gate does not yet consult it.
 
 The single worst survivor at 0.28 is `u08`, *"what loss function is dense
-passage retrieval trained with"*, at 0.51. Every content word in it appears in
+passage retrieval trained with"*, at 0.42. Every content word in it appears in
 `embeddings.md`, which discusses dense retrieval and mentions training - the
 corpus simply never names the loss. No lexical signal can tell those apart, and
 saying so is more useful than tuning the threshold until that one row flips.
 
 ### How much of any of that is real? Error bars on the ablation table
 
-Every table above this line reports a mean over the same 56 questions, and
+Every table above this line reports a mean over the same 64 questions, and
 several of the differences in them are one question wide. That is not a
-rhetorical point: at n=56 one question is worth 0.018 of any per-query metric,
-so hybrid's 0.696 hit@1 against BM25's 0.714 is *exactly one question*, and the
-hard slice - 22 questions - cannot resolve anything finer than 0.045. Nothing in
+rhetorical point: at n=64 one question is worth 0.016 of any per-query metric,
+so hybrid's 0.703 hit@1 against BM25's 0.734 is *exactly two questions*, and the
+hard slice - 26 questions - cannot resolve anything finer than 0.038. Nothing in
 the repo could distinguish "this lever helps" from "this lever moved one row",
 which made the whole evaluation section easy to over-read. `evals/significance.py`
 closes that hole:
@@ -1003,14 +1051,13 @@ python evals/significance.py
 ```
 
 ```
-all slice - 56 questions, one question is worth 0.018
+all slice - 64 questions, one question is worth 0.016
 metric    comparison                 A       B    delta              95% CI       p   floor       W/L/T
 -------------------------------------------------------------------------------------------------------
-hit@1     hybrid vs bm25         0.696   0.714   -0.018    [-0.054, +0.000]   1.000   1.000      0/1/55
-hit@5     hybrid vs bm25         0.946   0.929    0.018    [+0.000, +0.054]   1.000   1.000      1/0/55
-ndcg@5    hybrid vs bm25         0.799   0.801   -0.002    [-0.021, +0.019]   0.875   0.031      3/3/50
-ndcg@5    bm25 vs vector         0.801   0.794    0.007    [-0.019, +0.034]   0.648   0.008      5/3/48
-mrr       hybrid vs bm25         0.792   0.800   -0.007    [-0.030, +0.011]   0.625   0.031      3/3/50
+ndcg@5    bm25 vs vector         0.799   0.791    0.008    [-0.016, +0.035]   0.594   0.002      6/4/54
+mrr       hybrid vs bm25         0.788   0.797   -0.009    [-0.036, +0.013]   0.539   0.008      4/4/56
+mrr       hybrid vs vector       0.788   0.784    0.004    [-0.002, +0.014]   0.500   0.250      2/1/61
+mrr       bm25 vs vector         0.797   0.784    0.013    [-0.013, +0.048]   0.477   0.004      5/4/55
 ```
 
 Both procedures are *paired* - each method is scored on the same questions, so
@@ -1032,9 +1079,13 @@ That is the honest headline, and it is more useful than the tables it qualifies.
 
 The `W/L/T` column explains why, and is the number worth reading first. The
 three retrievers *agree* on almost every question - the largest disagreement
-anywhere in the run is 8 questions out of 56, and most rows are 0/1/55. The
-comparison's real sample size is not 56, it is the discordant count, and every
-tie is a question that carries no evidence either way.
+anywhere in the run is 10 questions out of 64, and several slices are 0/0/26
+outright. The comparison's real sample size is not 64, it is the discordant
+count, and every tie is a question that carries no evidence either way. Adding
+eight questions moved the largest discordant count from 8 to 10, which lowered
+the best reachable p-value from 0.008 to 0.002 and changed no verdict. That is
+the measured rate of return on gold-set growth for this particular claim, and it
+is slow.
 
 That leads to the one genuinely non-obvious result here, which the `floor`
 column reports directly. With `d` discordant pairs there are only `2 ** d` sign
@@ -1068,9 +1119,9 @@ does not touch a second problem that runs through every sweep table in this
 README, and that no amount of error-barring a single comparison can reach: the
 top row of a sweep was **chosen by looking at the same questions it is scored
 on**. The maximum of several noisy estimates is biased upward even when every
-configuration is identical, so "the best fusion weighting scored 0.768 hit@1" is
-not a prediction about the next 56 questions - it is the best of seven draws
-from the same 56.
+configuration is identical, so "the best fusion weighting scored 0.781 hit@1" is
+not a prediction about the next 64 questions - it is the best of seven draws
+from the same 64.
 
 `evals/holdout.py` measures the size of that bias by nested cross-validation:
 split the questions into folds, pick the winner on the training folds, score
@@ -1082,58 +1133,61 @@ python evals/holdout.py --slice hard --folds 4
 ```
 
 ```
-56 questions (all slice), k=5, 5-fold x 20 splits, seed 0
+64 questions (all slice), k=5, 5-fold x 20 splits, seed 0
+one question is worth 0.016 of any per-query metric; a held-out fold is 12 questions
 
 sweep           metric    picked          in-sample   held-out   optimism   vs default   stable
 -----------------------------------------------------------------------------------------------
-rrf_k           hit@1     60                  0.696      0.696     +0.000       +0.000     100%
-rrf_k           ndcg@5    1                   0.801      0.799     +0.001       +0.000       0%
-rrf_k           mrr       1                   0.795      0.792     +0.003       -0.000       0%
-fusion weights  hit@1     ngram=4             0.768      0.720     +0.048       +0.005       0%
-fusion weights  ndcg@5    ngram only          0.868      0.860     +0.008       +0.026      45%
-fusion weights  mrr       ngram=4             0.853      0.828     +0.025       +0.007       0%
-mmr lambda      hit@1     off                 0.696      0.696     +0.000       +0.000     100%
-mmr lambda      ndcg@5    off                 0.799      0.799     -0.000       +0.000     100%
-mmr lambda      mrr       off                 0.792      0.791     +0.001       -0.001      80%
+rrf_k           hit@1     1                   0.719      0.703     +0.016       +0.000       0%
+rrf_k           ndcg@5    1                   0.801      0.795     +0.006       +0.000       0%
+rrf_k           mrr       1                   0.796      0.788     +0.008       -0.000       0%
+fusion weights  hit@1     ngram=4             0.781      0.738     +0.043       +0.004       0%
+fusion weights  ndcg@5    ngram only          0.854      0.834     +0.020       +0.011       0%
+fusion weights  mrr       ngram=4             0.848      0.824     +0.023       +0.006       0%
+mmr lambda      hit@1     off                 0.703      0.703     +0.000       +0.000     100%
+mmr lambda      ndcg@5    off                 0.795      0.795     -0.000       +0.000     100%
+mmr lambda      mrr       off                 0.788      0.788     +0.000       -0.000     100%
 ```
 
 Read `optimism` first, on the `fusion weights / hit@1` row. The weighted-RRF
-table earlier in this README reports `ngram=4` at 0.768 against uniform's 0.714
+table earlier in this README reports `ngram=4` at 0.781 against uniform's 0.734
 and invites exactly the conclusion it looks like. Scored on questions the choice
-never saw, that configuration earns **0.720** - the headline shed 0.048, which
-on a 56-question set is between two and three questions of the four the sweep
+never saw, that configuration earns **0.738** - the headline shed 0.043, which
+on a 64-question set is between two and three questions of the three the sweep
 appeared to win. The `vs default` column finishes the demolition: the honest
 estimate of the whole procedure "sweep seven weightings, ship the winner" beats
-uniform RRF by 0.005, one-tenth of one question. On the hard slice the same row
-loses 0.070 to selection.
+uniform RRF by 0.004, a quarter of one question.
 
 Two controls make that number trustworthy rather than merely alarming, and they
 are why the script sweeps three different knobs instead of the one it wanted to
 indict:
 
-- **`rrf_k` reports near-zero optimism.** `evals/tune.py` already established
-  that `rrf_k` is inert over two lists - it changes nothing, so there is nothing
-  for selection to inflate, and the harness agrees. A bias detector that printed
-  a large number on a knob known to do nothing would be measuring its own
-  arithmetic.
+- **`rrf_k` reports near-zero optimism** (+0.006 to +0.016, and `vs default`
+  of +0.000). `evals/tune.py` already established that `rrf_k` is inert over two
+  lists - it changes nothing, so there is nothing for selection to inflate, and
+  the harness agrees. A bias detector that printed a large number on a knob known
+  to do nothing would be measuring its own arithmetic.
 - **MMR reports near-zero optimism and 100% stability**, because on this corpus
   every lambda loses to `off` on every split. Selection cannot inflate a sweep
   whose winner is the default.
 
 The `stable` column is the same finding read a different way, and the two
-columns are genuinely independent. `rrf_k / ndcg@5` is 0% stable with +0.001
+columns are genuinely independent. `rrf_k / ndcg@5` is 0% stable with +0.006
 optimism: the winner changes with every split, and it does not matter, because
 the configurations are interchangeable. `fusion weights / hit@1` is 0% stable
-with +0.048 optimism: there the instability is expensive, because the table
+with +0.043 optimism: there the instability is expensive, because the table
 presents its winner as a finding. A sweep row that is unstable *and* optimistic
 is a sample property being reported as a setting.
 
 One row survives the treatment, and it is the one the earlier section already
-flagged as the control it could not beat: `ngram only` on nDCG@5 holds +0.026
-over uniform out of sample, at 45% stability - and on the hard slice, +0.065 at
-95%. The three-list fusion is not being under-weighted; it is losing to its own
-best component, and that conclusion is the only one in this section that is
-stronger after cross-validation than before it.
+flagged as the control it could not beat: `ngram only` on nDCG@5 holds +0.011
+over uniform out of sample. Its stability fell from 45% to 0% when the corpus
+grew, which sharpens rather than softens the conclusion: the *margin* is real
+and shrinking, and the *identity* of the winner is now split-dependent. The
+three-list fusion is still losing to its own best component, and that is the
+only conclusion in this section stronger after cross-validation than before it.
+Two of the nine sweep/metric pairs now have a negative `vs default` - on those,
+the honest estimate of tuning is worse than shipping the constant.
 
 The scope is limited on purpose and the module says so: folds are resampled from
 one small gold set, so `optimism` is itself a noisy estimate, and this cannot
@@ -1147,7 +1201,7 @@ it has to survive being scored on questions that did not choose it.
 Every table above answers "did it rank better?". None of them answered "what
 did that cost?" - and four stages here are *optional*, which is only a real
 choice once both numbers exist. `python evals/latency.py` measures the other
-half: per-query wall time for each configuration, on the same 56 gold
+half: per-query wall time for each configuration, on the same 64 gold
 questions, pooled over repeats so `p95` is a genuine tail over queries rather
 than a mean in disguise.
 
@@ -1155,24 +1209,29 @@ than a mean in disguise.
 query latency (per query, k=5)          cost against quality (k=5)
 stage             median_ms   xbase       hit@1   recall@5    ndcg@5       mrr
 ------------------------------------------------------------------------------
-hybrid (2 lists)       0.18    1.00       0.696      0.893     0.799     0.792
-hybrid (3 lists)       0.42    2.38       0.714      0.938     0.834     0.821
-  + mmr 0.7            1.22    6.95       0.696      0.875     0.784     0.783
-  + expansion          1.29    7.35       0.589      0.911     0.773     0.748
-  + rerank             1.37    7.80       0.714      0.893     0.808     0.808
-  + all three          3.58   20.41       0.679      0.893     0.792     0.786
+hybrid (2 lists)       0.10    1.00       0.703      0.891     0.795     0.788
+hybrid (3 lists)       0.19    1.85       0.734      0.898     0.824     0.818
+  + mmr 0.7            1.12   10.85       0.703      0.891     0.787     0.780
+  + expansion          1.50   14.53       0.578      0.883     0.741     0.709
+  + rerank             1.69   16.43       0.750      0.891     0.817     0.821
+  + all three          4.24   41.11       0.703      0.883     0.793     0.788
 ```
 
 The ordering is the finding, and it is not the one the build order implies. The
-cheapest addition in the pipeline is also the best one: the character n-gram
-third list costs 2.4x a plain fused query and is the only row that improves
-every accuracy column at once. The three stages that came after it each cost
-about 7x and buy either a little (re-ranking: +0.018 hit@1, +0.009 nDCG@5) or
-nothing (expansion at these settings is negative at rank 1, which the sweep
-table already said). Stacked together they cost 20x and land *below* the
-2.4x row. If this were a latency budget rather than a portfolio project, the
-recommendation would be one line: ship the third list, keep re-ranking behind a
-flag, leave the rest off.
+cheapest addition in the pipeline is also the best value: the character n-gram
+third list costs 1.85x a plain fused query and improves every accuracy column at
+once. Re-ranking is the one stage that buys more (+0.047 hit@1, +0.022 nDCG@5,
++0.033 MRR) but it costs 16x to do it. Expansion at these settings is sharply
+negative at rank 1, which the sweep table already said. Stacked together the
+three optional stages cost 41x and land *below* the 1.85x row. If this were a
+latency budget rather than a portfolio project, the recommendation would be one
+line: ship the third list, keep re-ranking behind a flag, leave the rest off.
+
+The `xbase` multipliers grew sharply against the previous run (MMR 7x -> 11x,
+the full stack 20x -> 41x) while the absolute milliseconds mostly fell. That is
+the denominator moving, not the numerator: the base two-list query got faster
+per query while the fixed per-query cost of MMR and re-ranking stayed put, so the
+ratio widened. It is a good illustration of why a ratio needs its base stated.
 
 MMR is the one row where losing accuracy is not a failure - it is spending
 relevance on coverage deliberately, and its own table measures the coverage it
@@ -1186,12 +1245,12 @@ Two things the harness surfaced that reading the code had not:
   therefore time the index's own `search` directly - timing the engine would
   have produced a "bm25 only" row costing the same as the fusion, which is
   true of the engine and false of BM25.
-* **The n-gram index dominates build time**, at ~10ms against ~2.6ms for both
+* **The n-gram index dominates build time**, at ~14.5ms against ~4.3ms for both
   word indexes combined. Its query cost is proportionate, so the third list is
-  a consistent ~2.4x tax at both ends rather than a cheap index that is
-  expensive to query.
+  a consistent tax at both ends rather than a cheap index that is expensive to
+  query.
 
-The honest caveat is scale: 14 documents and 57 chunks is small enough that
+The honest caveat is scale: 16 documents and 69 chunks is small enough that
 these ratios describe *this* corpus, not a curve. Some of them should move
 predictably - MMR's work is O(k²) over a fixed `k` and so barely grows, while
 first-stage retrieval grows with the corpus, which means MMR's 7x is a
@@ -1216,17 +1275,18 @@ useless on real questions:
 inverted index work per query set (counts, not milliseconds)
 index               docs     reach        scan        taat   taat/scan
 ----------------------------------------------------------------------
-bm25                  57     96.0%       40150       10592        0.26
-tfidf                 57     96.0%       35258       10592        0.30
-ngram(4)              57     99.9%      153673       40174        0.26
+bm25                  69     96.5%       57571       15147        0.26
+tfidf                 69     96.5%       50925       15147        0.30
+ngram(4)              69     99.9%      222648       57408        0.26
 ```
 
 `reach` is the share of the collection a gold question touches through at least
-one term: 96%. One common word in a question - *what*, *does*, *the* - matches
+one term: 96.5%. One common word in a question - *what*, *does*, *the* - matches
 almost every chunk on its own, so the entire prize for filtering by membership
-is the remaining 4%. For the n-gram index it is 0.1%, because a 4-gram query
-reaches everything. Nor does that improve with scale: *the* appears in nearly
-every document at 57 chunks and at 57,000.
+is the remaining 3.5%. For the n-gram index it is 0.1%, because a 4-gram query
+reaches everything. Nor does that improve with scale - it got *worse* here,
+rising from 96.0% at 57 chunks to 96.5% at 69, which is the prediction confirmed:
+*the* appears in nearly every document at 69 chunks and at 69,000.
 
 The work was somewhere else. Scoring document-at-a-time costs one dictionary
 lookup per (reached document, query term) pair *whether or not the document
@@ -1237,7 +1297,7 @@ actually exists: the sum of the query terms' document frequencies. That is the
 `taat/scan` column, and it is the durable number in this section because it is
 a count rather than a timing - about a quarter of the lookups, on every index.
 
-The wall clock agrees, at 10 repeats over the 56 gold questions:
+The wall clock agrees, at 10 repeats over the (then) 56 gold questions:
 
 | stage | before | after | speedup |
 |---|---|---|---|
@@ -1296,17 +1356,20 @@ from a two-list fusion while the stored config said otherwise. Refusing to load
 and asking for a rebuild is the cheap failure; the silent success is the
 expensive one.
 
-Measured on this corpus (14 documents, 57 chunks), loading is about 1.7x
+Measured on this corpus (16 documents, 69 chunks), loading is about 1.5x
 faster than a cold build; on a 300-document copy of the same material the gap
-grows to about 2.4x, since fitting scales with corpus size while loading is a
+grows to about 1.7x, since fitting scales with corpus size while loading is a
 single JSON parse. Rankings, scores and answers are bit-for-bit identical
-either way - `tests/test_store.py` asserts exactly that.
+either way - `tests/test_store.py` asserts exactly that. The 300-document gap
+came out at 2.4x on the previous corpus and 1.7x here, measured the same way,
+which is worth reading as the precision this ratio has rather than as a
+regression: both runs are single measurements of a few-millisecond build.
 
 ### Growing the index: what "incremental" is actually worth
 
 Persistence removes the cost of rebuilding an index that did not change. The
 other half of the same problem is an index that changed *slightly* - one new
-document arriving at a process that already holds the other thirteen. Until now
+document arriving at a process that already holds the other fifteen. Until now
 that was a full rebuild, because the engine had exactly two ways to exist: built
 from a corpus, or restored from a snapshot.
 
@@ -1340,30 +1403,32 @@ Holding out the document that sorts last and adding it back:
 ```
 stage                           median_ms      p95_ms     mean_ms           n     xbase
 ---------------------------------------------------------------------------------------
-cold: build all 14 docs              5.88        7.98        6.17          25      1.00
-cold: build 13 then add 1            9.10       10.75        9.26          25      1.55
-warm: add 1 to a live index          3.77        4.27        4.16          25      0.64
+cold: build all 16 docs              7.80       10.14        8.16           5      1.00
+cold: build 15 then add 1           11.64       13.90       11.99           5      1.49
+warm: add 1 to a live index          4.92        5.18        4.88           5      0.63
 ```
 
 That is one run, not an average of several. Across repeated runs on this machine
 the cold-incremental multiplier lands between 1.3x and 1.6x and the warm one
 between 0.59x and 0.68x, which is the precision these numbers actually have -
 a build this short is a handful of milliseconds sitting on top of scheduler
-noise. The sign of each result is solid; the second decimal place is not.
+noise. The sign of each result is solid; the second decimal place is not. Both
+multipliers held their ranges when the corpus grew from 14 documents to 16,
+which is the most that can be claimed for a stability check this cheap.
 
 Two different answers, and the difference is what you start from.
 
-From cold the incremental path **loses, by about half again**. Reaching fourteen
-documents by way of thirteen pays the TF-IDF fit twice - once at thirteen, once
-at fourteen - and that refit is the largest single stage in the build (2.24 ms
-of it, against 1.22 ms for BM25 and 1.29 ms for chunking). If you do not already
+From cold the incremental path **loses, by about half again**. Reaching sixteen
+documents by way of fifteen pays the TF-IDF fit twice - once at fifteen, once
+at sixteen - and that refit is the largest single stage in the build (2.94 ms
+of it, against 1.53 ms for BM25 and 1.66 ms for chunking). If you do not already
 have an index, build one; there is no version of this where assembling a corpus
 document by document is the fast way.
 
 From warm - a running process holding an index and handed one new document,
 which is the only case the method exists for - it costs roughly **0.6x a full
-rebuild**, against a corpus rebuild that is itself only ~6 ms. The saving is
-the tokenising and counting of the thirteen documents already indexed, and it is
+rebuild**, against a corpus rebuild that is itself only ~8 ms. The saving is
+the tokenising and counting of the fifteen documents already indexed, and it is
 real but bounded, because the TF-IDF refit stays in the bill.
 
 That framing is also the honest scaling statement, and it does not flatter the
@@ -1377,7 +1442,7 @@ which way the curve points and why.
 
 The correctness claim is the part that has to be exact, and it is checked
 against real from-scratch builds rather than against a re-derivation of the same
-arithmetic. All 56 gold questions, ranked by both a grown engine and a whole
+arithmetic. All 64 gold questions, ranked by both a grown engine and a whole
 one, across every method, are identical position for position, and
 `tests/test_incremental.py` pins the index state itself - counters, lengths,
 document frequencies, IDF and postings - equal to what a single `fit` produces.

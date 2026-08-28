@@ -268,12 +268,24 @@ def test_engine_config_expansion_is_applied():
 
 
 def test_expansion_recovers_a_question_the_plain_query_misses():
-    """h18 is a documented miss at k=5; the borrowed terms find it."""
+    """h15 is a documented miss at k=5; the borrowed terms find it.
+
+    This test previously pinned h18 (`rag`). Growing the corpus from 14 to 16
+    documents changed the pseudo-relevance feedback pool, and at the shipped
+    weight h18 is no longer recovered - it needs `original_weight=0.7`, which
+    costs three other questions. That is the expansion trade-off moving under
+    a bigger corpus, not a bug, so the test now pins a miss that expansion
+    still rescues at the documented setting rather than loosening the weight
+    to keep the old assertion alive.
+    """
     engine = RAGEngine.from_corpus(CORPUS)
-    question = "Why can what a system knows be changed without any training at all?"
+    question = (
+        "Why is discarding the numbers and keeping only positions "
+        "a robust way to merge two orderings?"
+    )
     config = ExpansionConfig(feedback_terms=5, original_weight=0.8)
-    assert "rag" not in engine.ranked_doc_ids(question, k=5)
-    assert "rag" in engine.ranked_doc_ids(question, k=5, expansion=config)
+    assert "rank-fusion" not in engine.ranked_doc_ids(question, k=5)
+    assert "rank-fusion" in engine.ranked_doc_ids(question, k=5, expansion=config)
 
 
 def test_expansion_composes_with_mmr():

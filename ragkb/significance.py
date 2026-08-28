@@ -1,8 +1,8 @@
 """Paired significance testing for retrieval metrics.
 
-Every table in this project reports a mean over the same 56 gold questions, and
-several of the differences it prints are one question wide. On a 56-question set
-one question is worth 0.018 of any per-query metric, so a 0.02 gap in hit@1 is
+Every table in this project reports a mean over the same 64 gold questions, and
+several of the differences it prints are one question wide. On a 64-question set
+one question is worth 0.016 of any per-query metric, so a 0.02 gap in hit@1 is
 not a result - it is the measurement floor. Nothing in the repo could tell those
 two cases apart, which made the sweep tables easy to over-read.
 
@@ -154,7 +154,7 @@ def paired_bootstrap(
 #: Discordant-pair count below which :func:`permutation_test` enumerates every
 #: sign assignment instead of sampling them. ``2 ** 14`` assignments is a few
 #: milliseconds, and this project lives almost entirely in that regime - two
-#: retrievers on the same 56-question set typically disagree on three to five
+#: retrievers on the same 64-question set typically disagree on four to ten
 #: questions - so the common case gets an exact p-value rather than a noisy
 #: estimate of one.
 EXACT_LIMIT = 14
@@ -263,7 +263,7 @@ class Comparison:
     def significant(self) -> bool:
         """True when the confidence interval excludes zero.
 
-        Deliberately not thresholded on the p-value: with a 56-question set the
+        Deliberately not thresholded on the p-value: with a 64-question set the
         interval is the more informative object, and reporting "the CI includes
         zero" keeps the reader's attention on the size of the uncertainty rather
         than on which side of 0.05 a number landed.

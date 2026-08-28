@@ -82,7 +82,7 @@ def test_bm25_add_documents_scores_match_a_fresh_fit():
 
 
 def _held_out_engines(config: EngineConfig, ngram=None):
-    """Two engines over the same 14 documents: one built whole, one grown.
+    """Two engines over the same corpus: one built whole, one grown.
 
     The held-out document is the one that sorts last, so both engines end up
     with their chunks in the same order. That is the only condition under which

@@ -5,7 +5,7 @@ puts error bars on the gaps *inside* them. None of the three addresses the fact
 that the top row of a sweep was picked by looking at the same questions it is
 scored on. The maximum of several noisy estimates is biased upward even when
 every configuration is identical, so "the best `rrf_k` scored 0.83" is not a
-prediction about the next 56 questions.
+prediction about the next 64 questions.
 
 This script re-runs three query-time sweeps under nested cross-validation
 (:mod:`ragkb.holdout`): for each fold, pick the winner on the other folds, then

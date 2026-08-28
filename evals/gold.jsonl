@@ -54,3 +54,11 @@
 {"id": "h20", "question": "How do the accuracy gains of reading both texts together compare with designs where the collection is encoded in advance?", "relevant": ["late-interaction", "reranking"], "difficulty": "hard"}
 {"id": "h21", "question": "How can the memory bill for storing meanings as numbers be cut sharply without retraining anything?", "relevant": ["vector-compression"], "difficulty": "hard"}
 {"id": "h22", "question": "After a heavily squeezed index hands back rough candidates, what second pass makes the final ordering trustworthy again?", "relevant": ["vector-compression", "reranking"], "difficulty": "hard"}
+{"id": "q35", "question": "What does the FLOPS regulariser in SPLADE penalise during training?", "relevant": ["sparse-neural-retrieval"], "difficulty": "easy"}
+{"id": "q36", "question": "How does doc2query expand a passage before it is indexed?", "relevant": ["sparse-neural-retrieval"], "difficulty": "easy"}
+{"id": "q37", "question": "What is a bridge entity in a multi-hop question?", "relevant": ["multi-hop-retrieval"], "difficulty": "easy"}
+{"id": "q38", "question": "What signal does FLARE use to decide when to trigger a retrieval?", "relevant": ["multi-hop-retrieval"], "difficulty": "easy"}
+{"id": "h23", "question": "Why can a structure that keeps only a few non-zero numbers per document still answer queries more slowly than a plain count-based baseline over the same collection?", "relevant": ["sparse-neural-retrieval", "inverted-index"], "difficulty": "hard"}
+{"id": "h24", "question": "How can a trained model give one word different importance depending on where it sits in a passage, without giving up the old lookup machinery?", "relevant": ["sparse-neural-retrieval"], "difficulty": "hard"}
+{"id": "h25", "question": "When the wording needed to locate the second piece of evidence is absent from the original question, what has to happen before searching again?", "relevant": ["multi-hop-retrieval", "query-processing"], "difficulty": "hard"}
+{"id": "h26", "question": "Why does a sequence of dependent lookups become less trustworthy the longer it runs, even when each individual step usually succeeds?", "relevant": ["multi-hop-retrieval"], "difficulty": "hard"}
