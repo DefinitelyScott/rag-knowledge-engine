@@ -271,12 +271,17 @@ def test_expansion_recovers_a_question_the_plain_query_misses():
     """h15 is a documented miss at k=5; the borrowed terms find it.
 
     This test previously pinned h18 (`rag`). Growing the corpus from 14 to 16
-    documents changed the pseudo-relevance feedback pool, and at the shipped
-    weight h18 is no longer recovered - it needs `original_weight=0.7`, which
-    costs three other questions. That is the expansion trade-off moving under
-    a bigger corpus, not a bug, so the test now pins a miss that expansion
-    still rescues at the documented setting rather than loosening the weight
-    to keep the old assertion alive.
+    documents changed the pseudo-relevance feedback pool, and at 16 documents
+    h18 was no longer recovered at the shipped weight - it needed
+    `original_weight=0.7`, which cost three other questions. The test was
+    re-pinned to h15 rather than loosening the weight to keep the old
+    assertion alive.
+
+    At 18 documents h18 is recovered again at the shipped setting (it lands at
+    rank 4), along with h08. The lever never broke; its operating point moves
+    with the feedback pool, which is a property of the corpus rather than of
+    the code. h15 stays the pinned case because it is the one that has held
+    across all three corpus sizes.
     """
     engine = RAGEngine.from_corpus(CORPUS)
     question = (

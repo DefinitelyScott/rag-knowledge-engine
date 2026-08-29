@@ -2,12 +2,12 @@
 
 Every sweep in this project - `rrf_k` in `evals/tune.py`, the fusion weights and
 the MMR lambda in `evals/evaluate.py`, expansion alpha, re-ranking alpha - scores
-a handful of configurations on the same 64 gold questions and invites the reader
+a handful of configurations on the same 78 gold questions and invites the reader
 to take the top row. `ragkb/significance.py` already asks whether the *gap*
 between two named systems is real. This module asks the question one level up,
 which nothing else in the repo covers: **the top row was chosen by looking at the
 answers**, so its reported score is not an estimate of how that configuration
-will do on the next 64 questions. It is the maximum of several noisy estimates,
+will do on the next 78 questions. It is the maximum of several noisy estimates,
 and the maximum of noise is biased upward whether or not any configuration is
 genuinely better.
 
@@ -271,7 +271,7 @@ def repeated_selection(
 ) -> List[SelectionResult]:
     """Run :func:`cross_validated_selection` over ``repeats`` different splits.
 
-    One k-fold split is itself a sample: on 64 questions the held-out estimate
+    One k-fold split is itself a sample: on 78 questions the held-out estimate
     moves visibly with the seed, and reporting a single split's optimism would
     repeat in miniature the error this module exists to expose. Seeds run
     ``seed, seed + 1, ...`` so a reported spread is reproducible.

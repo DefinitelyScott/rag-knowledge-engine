@@ -2,9 +2,9 @@
 
 ``evaluate.py`` prints three methods side by side and invites the reader to pick
 a winner from the third decimal place. On the current gold set that invitation is
-a trap: 64 questions means one question is worth 0.016 of any per-query metric,
-so hybrid's 0.703 hit@1 against BM25's 0.734 is *two questions*, and the
-hard slice - 26 questions - resolves no finer than 0.038.
+a trap: 78 questions means one question is worth 0.013 of any per-query metric,
+so hybrid's 0.594 hit@1 against BM25's 0.562 on the hard slice is *one
+question*, and that slice - 32 questions - resolves no finer than 0.031.
 
 This script re-runs the same comparison and reports, for each pair of methods
 and each metric, the paired bootstrap interval for the difference, an

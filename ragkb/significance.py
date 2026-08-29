@@ -1,8 +1,8 @@
 """Paired significance testing for retrieval metrics.
 
-Every table in this project reports a mean over the same 64 gold questions, and
-several of the differences it prints are one question wide. On a 64-question set
-one question is worth 0.016 of any per-query metric, so a 0.02 gap in hit@1 is
+Every table in this project reports a mean over the same 78 gold questions, and
+several of the differences it prints are one question wide. On a 78-question set
+one question is worth 0.013 of any per-query metric, so a 0.02 gap in hit@1 is
 not a result - it is the measurement floor. Nothing in the repo could tell those
 two cases apart, which made the sweep tables easy to over-read.
 
