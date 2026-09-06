@@ -87,10 +87,12 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `ragkb/store.py` | index persistence: save/load with staleness fingerprinting |
 | `ragkb/attribution.py` | per-term score attribution: which words and which ranks produced one chunk's score |
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, nDCG@k, MRR |
+| `ragkb/perturb.py` | seeded, keyboard-aware query corruption plus the edit distance that measures it |
 | `ragkb/significance.py` | paired bootstrap intervals and randomization tests for metric differences |
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `explain`, `index`, `--mmr`, `--expand`, `--rerank`, `--ngram`, `--abstain`, `--index` |
 | `evals/tune.py` | index-time sweep: chunk size, chunk overlap, `rrf_k` (2 or 3 lists) |
 | `evals/failures.py` | per-question failure analysis: where a missed document really ranks, and which lever recovers it |
+| `evals/robustness.py` | the same ablation under misspelled queries: which methods degrade, and how fast |
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test |
 
 `corpus/` holds the sample knowledge base (eighteen documents on information
@@ -112,6 +114,7 @@ python evals/faithfulness_eval.py  # is the answer inside the passages it cites?
 python evals/abstention_eval.py    # does it know when there is no answer?
 python evals/failures.py           # why each miss missed, and what would fix it
 python evals/latency.py            # what each optional stage costs per query
+python evals/robustness.py         # how each method holds up when the query is misspelled
 pytest -q
 ```
 
@@ -1440,6 +1443,84 @@ whose best possible contribution cannot reach the current top-`k` - WAND or
 MaxScore - which is a real next step rather than a tweak, and is not
 implemented here.
 
+### Robustness: the one condition the third list was added for
+
+Every table above this line scores queries that were typed correctly. That is a
+convenient assumption and a false one, and it happens to test the character
+n-gram list under precisely the condition it was never expected to help in. The
+justification for that third list, written into `ragkb/retriever.py` long before
+any of this was measured, is that BM25 and TF-IDF tokenise into whole words and
+therefore *"both miss the same misspelling and the same morphological
+variant"*. That is a falsifiable claim about noisy input. The evidence for it
+was one unit test.
+
+`ragkb/perturb.py` corrupts a query the way a hand does: the four
+Damerau-Levenshtein edit types, with substitutions drawn from physically
+adjacent QWERTY keys rather than from the alphabet, at a budgeted character
+error rate. Three properties are load-bearing and each is pinned by a test.
+Rate 0.0 is *exactly* the identity, so the clean row is a baseline rather than
+a lucky draw - it reproduces the `evaluate.py` numbers to three decimals.
+The stream is derived from the query text with a keyed BLAKE2b digest, not from
+a counter walked across the file and not from the builtin `hash`, which is
+salted per process: appending a gold question must not re-roll the noise applied
+to the questions already there, or every corpus increment silently invalidates
+the previous robustness numbers. And the edit count is a budget rather than
+per-character coin flips, so two methods labelled "10%" were handed the same
+amount of damage instead of two samples of a random variable.
+
+```bash
+python evals/robustness.py
+python evals/robustness.py --rates 0.05,0.15 --seeds 15
+```
+
+Realised noise trails the knob, because tokens under four characters are never
+touched and the budget rounds down; the script reports what it achieved rather
+than what it asked for. At a requested 20% the realised rate is 0.129.
+
+nDCG@5, 78 questions, averaged over 7 noise draws per rate:
+
+| method | clean | 5% | 10% | 20% | retained at 20% |
+|---|---|---|---|---|---|
+| `bm25` | 0.785 | 0.724 | 0.650 | 0.500 | 63.6% |
+| `vector` | 0.781 | 0.727 | 0.665 | 0.508 | 65.1% |
+| `ngram` | 0.851 | 0.852 | 0.844 | 0.800 | **93.9%** |
+| `hybrid2` | 0.786 | 0.736 | 0.661 | 0.509 | 64.8% |
+| `hybrid3` | 0.828 | 0.774 | 0.732 | 0.595 | 71.8% |
+
+The design claim survives contact with a measurement, and by a wide margin. The
+two word-level indexes lose better than a third of their ranking quality, and
+they lose it *together* - 63.6% and 65.1%, which is what "miss the same
+misspelling" looks like when you put a number on it. Fusing them changes
+nothing (64.8%): reciprocal rank fusion can only reorder what its inputs
+retrieved, and two lists that failed for the same structural reason have no
+disagreement for it to arbitrate. The character index barely notices, holding
+93.9%, because a one-character typo leaves most of a word's 4-grams intact.
+hit@1 tells the same story more bluntly: at 20% noise BM25 answers 36% of
+questions correctly at rank one and the n-gram index answers 70%.
+
+**And then the fusion undoes most of it.** Adding the third list lifts retention
+from 64.8% to 71.8%, which reads like a win until you compare it against the
+third list on its own: 93.9%, at 0.800 nDCG@5 against the fusion's 0.595. Under
+noise the two brittle lists do not merely fail to help - they outvote the list
+that is still working. This is the `ngram only` control that `evaluate.py`
+already flags on clean text, failing here far more loudly, and it is the second
+independent axis on which the three-way fusion loses to its own third list. The
+script prints that comparison as a computed verdict rather than as prose, so it
+cannot drift out of agreement with the table when the corpus grows.
+
+Two things this does not establish. The seed spread (0.02-0.04 nDCG) bounds the
+variance from *drawing the noise*, which is the only uncertainty this script
+measures; the sampling error over 78 questions is a separate and larger one, and
+`evals/significance.py` is not yet wired into this harness - a real gap rather
+than a rounding detail. And "robust" here means robust to typing errors only.
+Vocabulary mismatch and paraphrase are a different failure mode with a different
+lever, which is what the query-expansion table above measures, and nothing here
+transfers to it.
+
+The uncomfortable reading is the useful one. On this corpus the character n-gram
+index wins clean *and* wins noisy, and the fusion's job has quietly become
+protecting two lists that lose to it on both axes.
+
 ## Persistence
 
 Every CLI invocation used to re-read the corpus, re-chunk it and re-fit both
@@ -1675,7 +1756,7 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 415 tests
+pytest -q      # 453 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
@@ -1723,8 +1804,19 @@ BM25 reproduces a single `fit` term for term and posting for posting, that
 adding one document changes the IDF of terms it does not contain, that an engine
 grown one document at a time returns rankings identical to a from-scratch build
 over the same corpus - with and without the n-gram list - and that the grown
-index still round-trips through a save/load), and an end-to-end pass over the
-real corpus and gold set.
+index still round-trips through a save/load), query corruption and the
+robustness harness (that rate 0.0 is byte-for-byte the identity so the clean row
+is a baseline rather than a lucky draw, that a query's corruption depends on its
+text and seed alone so appending a gold question cannot re-roll the noise on the
+ones already there, that the stream is a keyed digest rather than the
+process-salted builtin `hash`, that damage lands only inside long alphabetic
+runs and never deletes a word out of existence, that each operator alone moves
+length in the one direction it can, that a substitution stays on a physically
+adjacent key, that a requested rate is never overshot, and - the test that
+caught a real measurement bug - that a transposition costs one edit rather than
+the two plain Levenshtein would charge, which had been inflating every realised
+noise rate the harness reported), and an end-to-end pass over the real corpus
+and gold set.
 
 One of those tests exists because a bug shipped into a draft: `--ngram` was
 first declared with argparse's `nargs="?"`, which quietly consumes the
