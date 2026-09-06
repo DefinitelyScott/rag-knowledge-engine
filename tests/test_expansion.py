@@ -258,13 +258,40 @@ def test_expansion_changes_at_least_one_ranking():
 
 
 def test_engine_config_expansion_is_applied():
+    """`EngineConfig(expansion=c)` must be exactly `expansion=c` on every call.
+
+    This test used to probe one question (h18) and assert its ranking moved.
+    That is a claim about the corpus wearing the costume of a claim about the
+    plumbing: at twenty documents expansion leaves h18's top-5 byte-identical,
+    so the assertion failed while the config was being applied perfectly. It
+    had already been true-by-luck twice, because h18 is precisely the question
+    whose response to expansion flips with every corpus growth.
+
+    The invariant that actually belongs here is equivalence, which holds at any
+    corpus size: an engine carrying the config must rank the same as a plain
+    engine handed the config per call. A dropped config still fails it, since a
+    plain engine does not match itself-with-expansion - which is what the
+    second assertion pins, so the equivalence cannot pass vacuously.
+    """
     from ragkb.engine import EngineConfig
 
     config = ExpansionConfig(feedback_terms=5, original_weight=0.8)
-    engine = RAGEngine.from_corpus(CORPUS, config=EngineConfig(expansion=config))
+    configured = RAGEngine.from_corpus(CORPUS, config=EngineConfig(expansion=config))
     plain = RAGEngine.from_corpus(CORPUS)
-    question = "Why can what a system knows be changed without any training at all?"
-    assert engine.ranked_doc_ids(question, k=5) != plain.ranked_doc_ids(question, k=5)
+
+    with open(GOLD, "r", encoding="utf-8") as handle:
+        questions = [json.loads(line)["question"] for line in handle if line.strip()]
+
+    moved = 0
+    for question in questions:
+        expanded = plain.ranked_doc_ids(question, k=5, expansion=config)
+        assert configured.ranked_doc_ids(question, k=5) == expanded, question
+        if expanded != plain.ranked_doc_ids(question, k=5):
+            moved += 1
+
+    # Without this the equivalence above would also hold for a config that was
+    # silently ignored on both paths.
+    assert moved, "expansion changed no ranking; the equivalence proves nothing"
 
 
 def test_expansion_recovers_a_question_the_plain_query_misses():
@@ -277,11 +304,12 @@ def test_expansion_recovers_a_question_the_plain_query_misses():
     re-pinned to h15 rather than loosening the weight to keep the old
     assertion alive.
 
-    At 18 documents h18 is recovered again at the shipped setting (it lands at
-    rank 4), along with h08. The lever never broke; its operating point moves
-    with the feedback pool, which is a property of the corpus rather than of
-    the code. h15 stays the pinned case because it is the one that has held
-    across all three corpus sizes.
+    At 18 documents h18 was recovered again at the shipped setting, landing at
+    rank 4. At 20 it is not merely unrecovered - expansion no longer changes
+    its top-5 at all. Four corpus sizes, three different answers, no change to
+    the code in between: the lever never broke, its operating point is a
+    property of the feedback pool. h15 stays the pinned case because it is the
+    one that has held at every corpus size so far.
     """
     engine = RAGEngine.from_corpus(CORPUS)
     question = (

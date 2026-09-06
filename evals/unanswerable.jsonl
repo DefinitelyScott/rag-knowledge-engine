@@ -16,3 +16,5 @@
 {"id": "u16", "question": "when should a bloom filter sit in front of a lookup to avoid a disk read", "kind": "near-domain"}
 {"id": "u17", "question": "how do you a/b test a ranking change against live user traffic", "kind": "near-domain"}
 {"id": "u18", "question": "what does it cost per month to run a managed vector database at a billion vectors", "kind": "near-domain"}
+{"id": "u19", "question": "which open source search engine has the fastest block-max wand implementation", "kind": "near-domain"}
+{"id": "u20", "question": "how many bytes per posting does lucene use for its default codec", "kind": "near-domain"}

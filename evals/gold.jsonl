@@ -76,3 +76,17 @@
 {"id": "h30", "question": "Why does contrasting a two-tower model against passages picked at random leave it unable to make the distinctions ranking actually requires?", "relevant": ["negative-mining", "embeddings"], "difficulty": "hard"}
 {"id": "h31", "question": "Why does the pool of examples a model is trained to reject go out of date during training, and what has to be rebuilt because of it?", "relevant": ["negative-mining", "ann-search"], "difficulty": "hard"}
 {"id": "h32", "question": "How does the model that reads a question and a passage together end up shaping the model that never sees them together?", "relevant": ["negative-mining", "reranking"], "difficulty": "hard"}
+{"id": "q47", "question": "Why is a run of identifiers like 1002, 1009, 1041 written down instead as 1002, 7, 32?", "relevant": ["index-compression"], "difficulty": "easy"}
+{"id": "q48", "question": "How many bits of payload does each byte carry in variable-byte encoding, and what is the remaining bit used for?", "relevant": ["index-compression"], "difficulty": "easy"}
+{"id": "q49", "question": "What does PForDelta do with the values in a block that do not fit the bit width it chose?", "relevant": ["index-compression"], "difficulty": "easy"}
+{"id": "q50", "question": "Why does sorting web documents by URL before assigning identifiers make the index smaller?", "relevant": ["index-compression"], "difficulty": "easy"}
+{"id": "q51", "question": "What does it mean for a dynamic pruning algorithm to be rank-safe?", "relevant": ["dynamic-pruning"], "difficulty": "easy"}
+{"id": "q52", "question": "How does WAND pick the pivot document that its cursors skip ahead to?", "relevant": ["dynamic-pruning"], "difficulty": "easy"}
+{"id": "q53", "question": "How does MaxScore split the query terms, and what happens to the non-essential set?", "relevant": ["dynamic-pruning"], "difficulty": "easy"}
+{"id": "q54", "question": "What does Block-Max WAND store instead of a single maximum score per term?", "relevant": ["dynamic-pruning"], "difficulty": "easy"}
+{"id": "h33", "question": "When the entries are already in ascending order, what is cheaper to write down than the entries themselves, and why do the terms everybody searches for benefit most?", "relevant": ["index-compression", "inverted-index"], "difficulty": "hard"}
+{"id": "h34", "question": "Why can shrinking what is written down leave the whole system answering more slowly, and what measurement settles that argument?", "relevant": ["index-compression"], "difficulty": "hard"}
+{"id": "h35", "question": "When memory is the binding constraint, what gets made smaller on the counting side of a search stack and what gets made smaller on the learned side?", "relevant": ["index-compression", "vector-compression"], "difficulty": "hard"}
+{"id": "h36", "question": "What lets a walk over sorted lists leap forward past entries it never looks at, and what has to be known beforehand for the leap to change no answer?", "relevant": ["dynamic-pruning", "inverted-index"], "difficulty": "hard"}
+{"id": "h37", "question": "Why does padding passages with extra words at indexing time undermine the very shortcut that made the counting approach quick?", "relevant": ["dynamic-pruning", "sparse-neural-retrieval"], "difficulty": "hard"}
+{"id": "h38", "question": "What is given up when the bar for joining the running shortlist is set higher than the results found so far actually justify?", "relevant": ["dynamic-pruning"], "difficulty": "hard"}
