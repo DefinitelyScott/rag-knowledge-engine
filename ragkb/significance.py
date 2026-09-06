@@ -316,3 +316,55 @@ def compare(
         ties=len(a) - wins - losses,
         confidence=confidence,
     )
+
+
+def holm_bonferroni(
+    p_values: Sequence[float], alpha: float = 0.05
+) -> List[Tuple[float, bool]]:
+    """Step-down familywise correction over a family of p-values.
+
+    A single test at ``alpha = 0.05`` is wrong 5% of the time by construction.
+    A *table* of tests is wrong far more often: the chance that at least one of
+    ``m`` independent true nulls produces a p below 0.05 is ``1 - 0.95 ** m``,
+    which is 54% at ``m = 16`` and 99.9% at ``m = 150``. Any script that prints
+    a grid of comparisons and invites the reader to notice the small numbers is
+    running exactly that experiment, so the grid needs a correction or it needs
+    a disclaimer.
+
+    Holm's procedure is the one to reach for here rather than plain Bonferroni.
+    Both control the familywise error rate under arbitrary dependence - which
+    matters, because these comparisons are anything but independent: the same
+    questions and the same three retrievers appear in every row. But Bonferroni
+    tests every hypothesis at ``alpha / m``, while Holm sorts the p-values
+    ascending and tests the ``i``-th against ``alpha / (m - i)``, so it is
+    uniformly more powerful and never rejects less. There is no cost to
+    preferring it.
+
+    Returns one ``(adjusted_p, reject)`` pair per input, in the input order.
+    ``adjusted_p`` is the raw p scaled by its step-down multiplier, clamped to
+    1.0 and forced non-decreasing along the sorted order - without that
+    monotonicity fix a later, larger raw p could report a smaller adjusted
+    value, which is incoherent. Comparing ``adjusted_p`` against the original
+    ``alpha`` gives the same decisions as the sequential procedure.
+
+    The expected result on this project's gold set is that *nothing* survives,
+    and that is the honest headline rather than a disappointment: it says the
+    gold set is too small and too easy to separate these methods, which is a
+    statement about the benchmark and a concrete argument for growing it.
+    """
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be in (0, 1)")
+    for value in p_values:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("p-values must be in [0, 1], got {}".format(value))
+    total = len(p_values)
+    if total == 0:
+        return []
+    order = sorted(range(total), key=lambda index: p_values[index])
+    adjusted = [0.0] * total
+    running = 0.0
+    for rank, index in enumerate(order):
+        scaled = (total - rank) * p_values[index]
+        running = max(running, scaled)
+        adjusted[index] = min(1.0, running)
+    return [(adjusted[index], adjusted[index] <= alpha) for index in range(total)]

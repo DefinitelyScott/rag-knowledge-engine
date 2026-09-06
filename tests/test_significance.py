@@ -19,6 +19,7 @@ from ragkb.significance import (
     Comparison,
     bootstrap_ci,
     compare,
+    holm_bonferroni,
     mean,
     paired_bootstrap,
     permutation_test,
@@ -234,3 +235,97 @@ def test_select_slice_filters_by_difficulty():
     assert len(significance_eval.select_slice(gold, "all")) == 3
     assert [r["id"] for r in significance_eval.select_slice(gold, "hard")] == ["2", "3"]
     assert significance_eval.select_slice(gold, "missing") == []
+
+
+def test_holm_worked_example():
+    """A hand-computed case, so the multipliers are pinned rather than assumed.
+
+    Sorted ascending the raw values are 0.01, 0.03, 0.04 against multipliers
+    3, 2, 1: 0.03, 0.06, 0.04. The running maximum turns the last into 0.06,
+    which is the monotonicity fix doing its job.
+    """
+    result = holm_bonferroni([0.01, 0.04, 0.03], alpha=0.05)
+    assert [round(adjusted, 10) for adjusted, _ in result] == [0.03, 0.06, 0.06]
+    assert [reject for _, reject in result] == [True, False, False]
+
+
+def test_holm_is_monotone_in_the_sorted_order():
+    """A larger raw p must never receive a smaller adjusted p."""
+    raw = [0.001, 0.049, 0.02, 0.5, 0.011, 0.3]
+    adjusted = [value for value, _ in holm_bonferroni(raw)]
+    by_raw = [adjusted[i] for i in sorted(range(len(raw)), key=lambda j: raw[j])]
+    assert by_raw == sorted(by_raw)
+
+
+def test_holm_never_rejects_less_than_bonferroni():
+    """The whole reason to prefer Holm: it is uniformly more powerful."""
+    raw = [0.001, 0.009, 0.02, 0.04, 0.3, 0.8, 0.02, 0.006]
+    total = len(raw)
+    holm = holm_bonferroni(raw, alpha=0.05)
+    for value, (adjusted, reject) in zip(raw, holm):
+        bonferroni = min(1.0, value * total)
+        assert adjusted <= bonferroni + 1e-12
+        if value * total <= 0.05:
+            assert reject
+
+
+def test_holm_is_order_independent():
+    """Shuffling the family must not change any element's verdict."""
+    raw = [0.04, 0.001, 0.6, 0.02, 0.3]
+    straight = holm_bonferroni(raw)
+    order = [3, 0, 4, 1, 2]
+    shuffled = holm_bonferroni([raw[i] for i in order])
+    for position, source in enumerate(order):
+        assert shuffled[position][0] == pytest.approx(straight[source][0])
+        assert shuffled[position][1] == straight[source][1]
+
+
+def test_holm_clamps_and_handles_degenerate_families():
+    assert holm_bonferroni([]) == []
+    # A family of one is uncorrected: the multiplier is 1.
+    assert holm_bonferroni([0.04])[0] == (pytest.approx(0.04), True)
+    # Nothing may exceed 1.0 however large the family.
+    assert all(value <= 1.0 for value, _ in holm_bonferroni([0.9] * 20))
+    assert not any(reject for _, reject in holm_bonferroni([1.0, 1.0, 1.0]))
+
+
+def test_holm_rejects_the_whole_family_when_every_p_is_tiny():
+    result = holm_bonferroni([1e-6] * 8, alpha=0.05)
+    assert all(reject for _, reject in result)
+
+
+def test_holm_validates_its_inputs():
+    with pytest.raises(ValueError):
+        holm_bonferroni([0.5], alpha=0.0)
+    with pytest.raises(ValueError):
+        holm_bonferroni([0.5], alpha=1.0)
+    with pytest.raises(ValueError):
+        holm_bonferroni([0.5, 1.2])
+    with pytest.raises(ValueError):
+        holm_bonferroni([-0.1])
+
+
+def test_eval_method_routing_covers_the_ngram_list():
+    """The gap this increment closed: the harness must score the third list.
+
+    ``evaluate.py`` tells the reader to run the significance script before
+    believing its ``ngram only`` control, so a routing table that omits
+    ``ngram`` makes that instruction a dead pointer.
+    """
+    labels = [name for name, _, _ in significance_eval.METHOD_ROUTING]
+    assert "ngram" in labels
+    assert "hybrid3" in labels
+    for _, engine_name, method in significance_eval.METHOD_ROUTING:
+        assert engine_name in {"base", "ngram"}
+        # Only the three-list engine can serve the n-gram or three-way rows.
+        if method == "ngram":
+            assert engine_name == "ngram"
+
+
+def test_claims_are_stated_in_terms_of_known_methods():
+    """A claim naming a method the routing table does not build is unfalsifiable."""
+    labels = {name for name, _, _ in significance_eval.METHOD_ROUTING}
+    for left, right, description in significance_eval.CLAIMS:
+        assert left in labels
+        assert right in labels
+        assert description

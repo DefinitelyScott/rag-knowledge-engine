@@ -88,12 +88,12 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `ragkb/attribution.py` | per-term score attribution: which words and which ranks produced one chunk's score |
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, nDCG@k, MRR |
 | `ragkb/perturb.py` | seeded, keyboard-aware query corruption plus the edit distance that measures it |
-| `ragkb/significance.py` | paired bootstrap intervals and randomization tests for metric differences |
+| `ragkb/significance.py` | paired bootstrap intervals, randomization tests, and Holm familywise correction |
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `explain`, `index`, `--mmr`, `--expand`, `--rerank`, `--ngram`, `--abstain`, `--index` |
 | `evals/tune.py` | index-time sweep: chunk size, chunk overlap, `rrf_k` (2 or 3 lists) |
 | `evals/failures.py` | per-question failure analysis: where a missed document really ranks, and which lever recovers it |
 | `evals/robustness.py` | the same ablation under misspelled queries: which methods degrade, and how fast |
-| `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test |
+| `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
 
 `corpus/` holds the sample knowledge base (eighteen documents on information
 retrieval). `evals/gold.jsonl` holds seventy-eight labelled questions with the
@@ -1170,14 +1170,19 @@ would bury the signal in it. `ragkb/significance.py` implements two:
   its difference falls on, and count how often chance alone reaches the observed
   gap. Answers "is this delta distinguishable from noise?"
 
-The verdict on the whole evaluation section: **none of it is significant.** Not
-one comparison at any k, on any slice, has a 95% interval that excludes zero.
-That is the honest headline, and it is more useful than the tables it qualifies.
+The verdict on the whole evaluation section: **none of it is significant.**
+Among these three word-level methods, not one comparison at any k, on any
+slice, has a 95% interval that excludes zero. That is the honest headline, and
+it is more useful than the tables it qualifies. (Once the character n-gram list
+joins the run some intervals *do* clear zero - and none of those survive the
+familywise correction either, which the next section takes up.)
 
 The `W/L/T` column explains why, and is the number worth reading first. The
-three retrievers *agree* on almost every question - the largest disagreement
-anywhere in the run is 12 questions out of 78, and several slices are 0/0/32
-outright. The comparison's real sample size is not 78, it is the discordant
+three *word-level* retrievers agree on almost every question - the largest
+disagreement among them is 12 questions out of 78, and several slices are
+0/0/32 outright. (That ceiling turns out to be a property of comparing three
+word-level methods rather than of the gold set; the next section adds the
+character n-gram list and reaches 36.) The comparison's real sample size is not 78, it is the discordant
 count, and every tie is a question that carries no evidence either way. Three
 rounds of gold-set growth have moved the largest discordant count 8 -> 10 -> 12,
 lowering the best reachable p-value from 0.008 to 0.002 to 0.000 and changing no
@@ -1211,6 +1216,100 @@ about them - and it sets the standard the next increment has to clear, which is
 that a bigger gold set (specifically, one with more questions where the
 retrievers *can* disagree) is now the measured prerequisite for any retrieval
 claim this project wants to make.
+
+### The dead pointer: the one comparison that was never tested
+
+The section above ends by saying the retrievers agree on almost every question
+and that the largest disagreement anywhere is 12 out of 78. That was true, and
+it was also an artefact of *which* retrievers were being compared. Until this
+increment `evals/significance.py` scored exactly three methods - `hybrid`,
+`bm25` and `vector` - all three of which tokenise into whole words. Meanwhile
+`evaluate.py` prints an `ngram only` control and closes with:
+
+> run `python evals/significance.py` before believing any gap above
+
+That instruction pointed at a script which had never scored the n-gram list.
+The comparison this project leans on hardest - the third list alone against the
+three-way fusion, the claim that drives the whole "what it cost the thesis"
+section - was the one comparison with no error bars anywhere in the repo.
+`METHOD_ROUTING` now mirrors the table in `evals/robustness.py`, so both
+harnesses score the same five methods through the same two engines and cannot
+drift into meaning different things by `hybrid3`.
+
+```bash
+python evals/significance.py
+python evals/significance.py --methods ngram,hybrid3 --metrics ndcg@5
+```
+
+**The gold set is more discriminative than the previous section concluded.**
+Three word-level methods disagreed on at most 12 questions. Add the character
+n-gram list and the largest discordant count is **36** - `ngram` against
+`hybrid2` on nDCG@5, 24 wins to 12 losses. Tripling the evidence did not require
+a single new gold question; it required comparing methods that fail differently.
+The earlier reading, that gold-set growth was the only lever on discordance, was
+too pessimistic: *method diversity* is the other lever, and it was free.
+
+**And that is exactly when the multiple-comparison problem arrives.** Three
+methods make 3 pairs per metric per slice; five make 10. A full run went from 45
+tests to 150. At α=0.05, 150 tests are expected to produce **7.5** spurious wins
+even if every method were identical, so a table that invites the reader to scan
+for small p-values is no longer a table that can be read row by row.
+`ragkb/significance.py` gained `holm_bonferroni`, and the harness now corrects
+across every comparison in the run and prints `p_holm` beside the raw `p`. Holm
+rather than plain Bonferroni because both control the familywise rate under
+arbitrary dependence - and these rows are heavily dependent, sharing questions,
+methods and nested slices - while Holm's step-down is uniformly more powerful,
+so there is no reason to take the weaker one.
+
+The correction earns its place immediately:
+
+| | count |
+|---|---|
+| comparisons in a full run | 150 |
+| expected spurious at raw α=0.05 | 7.5 |
+| **observed** at raw p<0.05 | **14** |
+| surviving Holm | **0** |
+
+Fourteen rows cross the uncorrected threshold and not one survives. The
+strongest is `vector vs hybrid3` on MRR at p=0.001, which the correction lifts
+to 0.220. Anyone reading the raw column alone would have come away with four
+confident findings about the three-way fusion; the honest count is zero, and 14
+against an expected 7.5 is roughly what a global null produces.
+
+The three claims the project's own prose makes are now checked by name, so they
+cannot quietly drift out of agreement with the measurement:
+
+```
+claims this project makes, tested on ndcg@5 / all slice
+NOT SHOWN   ngram vs hybrid3     delta +0.023  p_holm 1.000  17W/11L/50T
+NOT SHOWN   hybrid3 vs hybrid2   delta +0.042  p_holm 1.000  15W/2L/61T
+NOT SHOWN   hybrid2 vs bm25      delta +0.001  p_holm 1.000   3W/3L/72T
+```
+
+All three are unproven, and they fail for three different reasons worth telling
+apart. `hybrid2 vs bm25` is a *dead* claim: 3W/3L is six discordant questions
+and a delta of +0.001 - fusing BM25 with TF-IDF does essentially nothing here,
+which the earlier `rrf_k` section reached independently. `hybrid3 vs hybrid2`
+is the most promising thing in the table - 15 wins to 2 losses is a lopsided
+split and its uncorrected p is 0.010 - and it is defeated by the family size
+rather than by the data; it is the claim most likely to survive a larger gold
+set. (Restricting the run to one slice with `--slices all` shrinks the family
+from 150 tests to 50 and its `p_holm` falls from 1.000 to 0.479, which is the
+same evidence bought more cheaply and is worth knowing before deciding how many
+comparisons to ask for.) `ngram vs hybrid3` is the interesting failure: 17W/11L across 28 discordant
+questions is a genuine mixed result, not an absence of evidence. On clean text
+the third list and the fusion trade wins, and the +0.023 nDCG@5 gap the weighted
+RRF table reports is not distinguishable from noise.
+
+That last one is worth stating plainly because it **narrows an earlier claim in
+this README.** The robustness section found the n-gram list beating the fusion
+under noise by a wide margin - 0.800 against 0.595, far too large to be a
+sampling artefact. The clean-text version of that same comparison does not hold
+up. The defensible statement is therefore the narrower one: *under query noise*
+the fusion is outvoted by its own third list, and on clean queries the two are
+indistinguishable on this gold set. The two-axis reading in the robustness
+section overstated the clean-text axis, and this is the measurement that caught
+it.
 
 ### The other bias: every sweep above picked its own winner
 
@@ -1517,9 +1616,16 @@ Vocabulary mismatch and paraphrase are a different failure mode with a different
 lever, which is what the query-expansion table above measures, and nothing here
 transfers to it.
 
-The uncomfortable reading is the useful one. On this corpus the character n-gram
-index wins clean *and* wins noisy, and the fusion's job has quietly become
-protecting two lists that lose to it on both axes.
+The uncomfortable reading is the useful one - but only on the axis this script
+measures. A later increment put error bars on the clean-text half of that
+sentence and it did not hold: `ngram` against `hybrid3` on clean queries is
+17W/11L, a mixed result whose +0.023 nDCG@5 gap does not survive a familywise
+correction (see *The dead pointer*, above). The noisy half stands - 0.800
+against 0.595 is far too wide to be sampling error. So the defensible claim is
+the narrower one: **under query noise** the fusion is outvoted by its own third
+list, and on clean text the two are indistinguishable on this gold set. The
+"wins on both axes" reading was one axis of evidence and one axis of
+over-reading.
 
 ## Persistence
 
@@ -1756,7 +1862,7 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 453 tests
+pytest -q      # 462 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
@@ -1780,7 +1886,13 @@ system winning every question is, that a seed reproduces an interval exactly,
 that the pairing is genuinely used rather than the two vectors being treated as
 independent samples, and - the regression guard for the bug that produced the
 exact-enumeration path - that a small comparison's p-value lands exactly on its
-own floor rather than below it), the timing harness (asserted on its arithmetic
+own floor rather than below it), the familywise correction (a hand-computed
+Holm example so the step-down multipliers are pinned rather than assumed, that
+a larger raw p never receives a smaller adjusted one, that shuffling the family
+changes no element's verdict, that Holm never rejects less than Bonferroni -
+the entire reason to prefer it - and that the routing table actually builds the
+n-gram list, since a claim naming a method the harness cannot score is
+unfalsifiable), the timing harness (asserted on its arithmetic
 and its failure modes, never on a duration - a benchmark that fails when the
 machine is busy is a flaky test, not a measurement), the score attribution
 (that every decomposition sums back to the scorer it decomposes, that `missing`
