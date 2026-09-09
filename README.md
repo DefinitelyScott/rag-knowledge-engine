@@ -89,11 +89,13 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, nDCG@k, MRR |
 | `ragkb/perturb.py` | seeded, keyboard-aware query corruption plus the edit distance that measures it |
 | `ragkb/significance.py` | paired bootstrap intervals, randomization tests, and Holm familywise correction |
+| `ragkb/power.py` | exact sign-test power and required gold-set size: how many questions a difference would need |
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `explain`, `index`, `--mmr`, `--expand`, `--rerank`, `--ngram`, `--abstain`, `--index` |
 | `evals/tune.py` | index-time sweep: chunk size, chunk overlap, `rrf_k` (2 or 3 lists) |
 | `evals/failures.py` | per-question failure analysis: where a missed document really ranks, and which lever recovers it |
 | `evals/robustness.py` | the same ablation under misspelled queries: which methods degrade, and how fast |
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
+| `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
 
 `corpus/` holds the sample knowledge base (twenty documents on information
 retrieval). `evals/gold.jsonl` holds ninety-two labelled questions with the
@@ -107,6 +109,7 @@ abstention gate is measured against.
 ```bash
 python evals/evaluate.py     # ablation + query-time sweeps + the third retriever
 python evals/significance.py # error bars: which of those differences are real
+python evals/power.py        # how many questions the differences would need to be real
 python evals/holdout.py      # what each sweep's top row cost by picking itself
 python evals/tune.py         # index-time sweeps (chunk size, overlap, rrf_k)
 python evals/tune.py --ngram 4   # the same rrf_k sweep against three lists
@@ -1532,6 +1535,103 @@ rescue a sweep from a gold set too small to distinguish anything. What it does
 is price a cost that the tables had been reporting as zero. Combined with the
 `floor` column above, the standard for the next retrieval claim is now explicit:
 it has to survive being scored on questions that did not choose it.
+
+### So how many questions would it take? Pricing the standing excuse
+
+Every negative result above ends the same way, and `evals/significance.py`
+prints it verbatim: *the fix is a bigger and more discriminative gold set rather
+than a different test.* That sentence has been doing a lot of work for a long
+time, and until now it was unfalsifiable, because nothing here could say **how
+much** bigger. `python evals/power.py` prices it.
+
+The instrument is the exact two-sided sign test. That is not an analogy for what
+the repo already runs - for a binary per-query metric every discordant question
+contributes a difference of exactly ±1, so the approximate-randomization test in
+`ragkb/significance.py` *is* the sign test on hit@k. For graded metrics (MRR,
+nDCG@5) the randomization test uses magnitude information the sign test throws
+away, so these question counts are a conservative upper bound on those rows
+rather than a prediction.
+
+The parameterisation splits the two things a gold set contributes, because they
+are not interchangeable and conflating them is how "just add more questions"
+becomes bad advice. **Discordance rate** is how often the two methods disagree
+at all - a property of how discriminative the questions are. **Win share** is
+who wins when they do - the effect size, with 0.5 as the null. Only discordant
+questions carry evidence; ties are invariant under the sign flips. A question
+both methods already answer correctly adds to `n` and contributes exactly
+nothing to the test.
+
+What this gold set can resolve, before looking at any result: the three claim
+comparisons disagree on 21.7% of questions on average, about 20 discordant pairs
+out of 92. At that rate **the smallest effect 92 questions can detect at 80%
+power is a win share of 0.819** - one method has to take 82% of the
+disagreements. Against a genuinely small effect (win share 0.60) this gold set
+has **9.9% power**. It would miss a real difference of that size nine times in
+ten.
+
+Required questions by assumed truth, which looks at no result at all and would
+print the same numbers if every retriever here were replaced tomorrow:
+
+```
+ discordance   q=0.55   q=0.60   q=0.65   q=0.70   q=0.80   q=0.90
+------------------------------------------------------------------
+         5%     16064     4086     1840     1035      463      251
+        10%      8032     2043      920      517      231      125
+        15%      5355     1362      613      345      154       83
+        20%      4016     1021      460      258      115       62
+        30%      2677      681      306      172       77       41
+```
+
+Halving the effect roughly quadruples the questions needed - but so does
+dividing the discordance rate by four, and **the discordance rate is the cheaper
+lever**. This is the quantitative form of the corpus-growth strategy described
+at the top of this page, where each new document is placed beside an existing
+one it shares vocabulary with so that some question gets a lexically plausible
+wrong neighbour. That strategy is not an aesthetic preference. Writing questions
+that *separate* the methods moves the table as hard as writing four times as
+many that do not.
+
+Then the three claims, priced against their own observed splits:
+
+| claim | W/L/T | rate | obs. share | questions needed | verdict at n=92 |
+| --- | --- | --- | --- | --- | --- |
+| ngram vs hybrid3 | 22/12/58 | 37.0% | 0.65 | 258 | NOT SHOWN |
+| hybrid3 vs hybrid2 | 16/2/74 | 19.6% | 0.89 | 68 | SUPPORTED |
+| hybrid2 vs bm25 | 3/5/84 | 8.7% | 0.38 | 1513 | NOT SHOWN |
+
+**The last column is not an input to the fourth.** Required-sample-size is
+derived from the binomial alone, with no knowledge of what the significance
+harness concluded, and the two agree three times out of three: the one claim
+needing fewer questions than the set holds (68 ≤ 92) is the one that came back
+SUPPORTED, and both claims needing more (258 and 1513) are the ones that came
+back NOT SHOWN. That agreement is the reason to trust the grid above, and
+`tests/test_power.py` pins it so a future divergence shows up as a failure
+rather than a quiet drift.
+
+Read the bottom row carefully, because it is the most useful line in the table
+and the easiest to misread. `hybrid2 vs bm25` is the project's headline claim,
+and its observed share is 0.38 - **below** 0.5, meaning the three discordant
+questions fusion wins are outnumbered by the five it loses. The 1513 is what it
+would cost to establish an effect of that magnitude *in either direction*. The
+honest reading is not "1513 questions would vindicate fusion". It is that after
+twenty documents and 92 questions the fusion-versus-BM25 comparison has
+accumulated eight disagreements in total, which is one above the floor where
+significance becomes arithmetically possible at all, and the effect such as it
+is points the wrong way.
+
+Two caveats, stated plainly because the second is a genuine statistical trap.
+First, an observed share near 0.50 sends the required sample to infinity, which
+is correct rather than a bug: it reports "no effect worth sizing was seen here".
+Second, **none of this is retrospective power.** Computing "the power I had to
+detect the effect I just observed" is circular - observed power is a monotone
+function of the p-value, so it restates the result and calls it a diagnosis, and
+a non-significant finding always comes back with low observed power by
+construction. Every figure here is conditional and prospective: *if the truth
+were this, this is what it would cost to see it.* The observed splits are
+hypotheses resting on eight to thirty-four disagreements, which pin a proportion
+to roughly a third either way at the low end, so the claims table carries error
+bars far wider than the grid above it. The grid is the finding; the claims table
+is an illustration of how to use it.
 
 ### What each stage costs
 
