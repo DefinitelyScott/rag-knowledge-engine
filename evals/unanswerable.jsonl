@@ -18,3 +18,5 @@
 {"id": "u18", "question": "what does it cost per month to run a managed vector database at a billion vectors", "kind": "near-domain"}
 {"id": "u19", "question": "which open source search engine has the fastest block-max wand implementation", "kind": "near-domain"}
 {"id": "u20", "question": "how many bytes per posting does lucene use for its default codec", "kind": "near-domain"}
+{"id": "u21", "question": "what kendall tau did the clarity score reach on the trec robust track", "kind": "near-domain"}
+{"id": "u22", "question": "which passage aggregation rule does elasticsearch apply to nested documents by default", "kind": "near-domain"}

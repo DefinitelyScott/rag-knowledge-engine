@@ -90,3 +90,17 @@
 {"id": "h36", "question": "What lets a walk over sorted lists leap forward past entries it never looks at, and what has to be known beforehand for the leap to change no answer?", "relevant": ["dynamic-pruning", "inverted-index"], "difficulty": "hard"}
 {"id": "h37", "question": "Why does padding passages with extra words at indexing time undermine the very shortcut that made the counting approach quick?", "relevant": ["dynamic-pruning", "sparse-neural-retrieval"], "difficulty": "hard"}
 {"id": "h38", "question": "What is given up when the bar for joining the running shortlist is set higher than the results found so far actually justify?", "relevant": ["dynamic-pruning"], "difficulty": "hard"}
+{"id": "q55", "question": "What information may a pre-retrieval predictor use when it estimates how a query will fare?", "relevant": ["query-performance-prediction"], "difficulty": "easy"}
+{"id": "q56", "question": "What two language models does the clarity score compare?", "relevant": ["query-performance-prediction"], "difficulty": "easy"}
+{"id": "q57", "question": "What size of rank correlation counts as respectable for a query performance predictor?", "relevant": ["query-performance-prediction"], "difficulty": "easy"}
+{"id": "q58", "question": "Which passage aggregation rule scores a document by its single best passage?", "relevant": ["passage-aggregation"], "difficulty": "easy"}
+{"id": "q59", "question": "Why does summing every passage score favour longer documents?", "relevant": ["passage-aggregation"], "difficulty": "easy"}
+{"id": "q60", "question": "When is using a document's opening passage as its score a reasonable proxy?", "relevant": ["passage-aggregation"], "difficulty": "easy"}
+{"id": "h39", "question": "Why does a set of results whose scores are all much alike suggest the system never settled on anything?", "relevant": ["query-performance-prediction"], "difficulty": "hard"}
+{"id": "h40", "question": "Why would a gauge of answer quality tuned on newspaper archives misjudge short technical passages?", "relevant": ["query-performance-prediction", "domain-shift"], "difficulty": "hard"}
+{"id": "h41", "question": "How is a method for guessing result quality itself assessed, given that doing so needs the very labelled judgements it exists to avoid?", "relevant": ["query-performance-prediction", "evaluation"], "difficulty": "hard"}
+{"id": "h42", "question": "Why might a system refuse to add extra words to a request it already suspects has gone wrong?", "relevant": ["query-performance-prediction", "query-processing"], "difficulty": "hard"}
+{"id": "h43", "question": "Why does repeating the same sentences across neighbouring segments distort a rule that adds their scores together?", "relevant": ["passage-aggregation", "chunking"], "difficulty": "hard"}
+{"id": "h44", "question": "Which way of collapsing fragment scores is least suited to a question whose answer has to be gathered from several places at once?", "relevant": ["passage-aggregation", "multi-hop-retrieval"], "difficulty": "hard"}
+{"id": "h45", "question": "How does totalling every fragment's score undo the correction the ranking function already made for document length?", "relevant": ["passage-aggregation", "bm25"], "difficulty": "hard"}
+{"id": "h46", "question": "Why might a pipeline assembling text for a generator not want whole documents ranked at all?", "relevant": ["passage-aggregation", "rag"], "difficulty": "hard"}

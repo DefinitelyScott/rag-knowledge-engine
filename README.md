@@ -97,10 +97,10 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
 | `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
 
-`corpus/` holds the sample knowledge base (twenty documents on information
-retrieval). `evals/gold.jsonl` holds ninety-two labelled questions with the
-documents that answer them, split into an `easy` and a `hard` slice.
-`evals/unanswerable.jsonl` holds twenty questions the corpus deliberately
+`corpus/` holds the sample knowledge base (twenty-two documents on information
+retrieval). `evals/gold.jsonl` holds one hundred and six labelled questions with
+the documents that answer them, split into an `easy` and a `hard` slice.
+`evals/unanswerable.jsonl` holds twenty-two questions the corpus deliberately
 cannot answer, split into `off-domain` and `near-domain`, which is what the
 abstention gate is measured against.
 
@@ -121,40 +121,49 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (20 documents, 92 chunks,
-92 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (22 documents, 105 chunks,
+106 questions, k=5, document-level relevance).
 
-The gold set is split by difficulty. The `easy` slice is fifty-four
+> **Provenance.** The ablation, three-list, significance and power sections
+> below were recomputed at twenty-two documents. The index-time and query-time
+> sweeps that were not re-run for that increment - chunking, `rrf_k`, the MMR
+> lambda sweep, holdout, latency, robustness and persistence - still report the
+> twenty-document, ninety-two-question figures and say so in place. They are
+> labelled rather than quietly refreshed because a mixed table with no marker is
+> the failure mode this file exists to avoid; re-running them is the next
+> increment, not a silent edit.
+
+The gold set is split by difficulty. The `easy` slice is sixty
 questions whose wording shares vocabulary with the target document. The `hard`
-slice is thirty-eight questions written to avoid the target document's own terms -
+slice is forty-six questions written to avoid the target document's own terms -
 "if someone writes automobiles but the page only ever says cars" instead of
-"vocabulary mismatch" - and twenty-one of them are answered by two documents
+"vocabulary mismatch" - and twenty-eight of them are answered by two documents
 rather than one.
 
-**easy (54 questions)**
+**easy (60 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.796 | 0.926 | 0.963 | 0.963 | 0.891 | 0.866 |
-| bm25 | 0.815 | 0.926 | 0.944 | 0.944 | 0.893 | 0.875 |
-| vector | 0.796 | 0.926 | 0.981 | 0.981 | 0.899 | 0.871 |
+| hybrid | 0.833 | 0.933 | 0.983 | 0.983 | 0.909 | 0.885 |
+| bm25 | 0.850 | 0.933 | 0.967 | 0.967 | 0.911 | 0.893 |
+| vector | 0.817 | 0.933 | 0.967 | 0.967 | 0.900 | 0.878 |
 
-**hard (38 questions, 21 with two relevant documents)**
+**hard (46 questions, 28 with two relevant documents)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.526 | 0.816 | 0.868 | 0.697 | 0.603 | 0.674 |
-| bm25 | 0.526 | 0.816 | 0.868 | 0.697 | 0.604 | 0.674 |
-| vector | 0.553 | 0.816 | 0.868 | 0.697 | 0.609 | 0.686 |
+| hybrid | 0.609 | 0.804 | 0.870 | 0.696 | 0.622 | 0.711 |
+| bm25 | 0.587 | 0.826 | 0.891 | 0.739 | 0.635 | 0.699 |
+| vector | 0.630 | 0.804 | 0.870 | 0.707 | 0.630 | 0.721 |
 
 The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
-hit@k - the column is decoration. hit@5 sits at 0.944 or better for all three
+hit@k - the column is decoration. hit@5 sits at 0.967 or better for all three
 methods, so there is almost nothing left there for a retrieval change to move.
 
-The hard slice restores headroom: hit@1 falls from 0.796 to 0.526 and MRR from
-0.866 to 0.674, and recall@k finally diverges from hit@k because a question
-answered by two documents can be half-satisfied. Thirteen questions land in
+The hard slice restores headroom: hit@1 falls from 0.833 to 0.609 and MRR from
+0.885 to 0.711, and recall@k finally diverges from hit@k because a question
+answered by two documents can be half-satisfied. Sixteen questions land in
 exactly that state at k=5, which is a failure mode the easy slice cannot express
 at all.
 
@@ -186,7 +195,7 @@ add questions and watch the sign move.
 So the standing claim reverts to the weaker and older one: **on this corpus,
 fusing BM25 with TF-IDF has still never been shown to beat BM25 alone.** The
 significance section tests exactly that comparison and reports NOT SHOWN
-(nDCG@5, -0.002, 3W/5L/84T).
+(nDCG@5, -0.007, 6W/9L/91T).
 
 The corpus keeps being grown for exactly this reason, each new document placed
 beside an existing one it shares vocabulary with so that some question gets a
@@ -195,19 +204,21 @@ lexically plausible wrong neighbour: `late-interaction.md` beside
 `sparse-neural-retrieval.md` beside `bm25.md` and `inverted-index.md`,
 `multi-hop-retrieval.md` beside `query-processing.md` and `rag.md`,
 `domain-shift.md` beside `evaluation.md` and `bm25.md`, `negative-mining.md`
-beside `embeddings.md` and `reranking.md`, and the two newest, both placed
-against `inverted-index.md` because it was the one document covering two large
-topics in a paragraph each: `index-compression.md` (also beside
-`vector-compression.md`, with which it shares the word "compression" and
-nothing else) and `dynamic-pruning.md` (also beside `sparse-neural-retrieval.md`,
-which already named WAND as the thing learned sparse expansion slows down).
+beside `embeddings.md` and `reranking.md`, `index-compression.md` and
+`dynamic-pruning.md` both against `inverted-index.md` because it was the one
+document covering two large topics in a paragraph each, and the two newest:
+`passage-aggregation.md` beside `chunking.md`, which already described how a
+document is cut up but never how the resulting scores are put back together,
+and `query-performance-prediction.md` beside `evaluation.md` and `abstain`'s
+own subject matter, since both are about judging a result - one with labels and
+one without.
 
 The one pattern that survived the growth unchanged is on the easy slice: BM25
-still takes it outright at rank one (hit@1 0.815 against 0.796, MRR 0.875
-against 0.866). Fusion buys ordering quality on paraphrased questions and pays
+still takes it outright at rank one (hit@1 0.850 against 0.833, MRR 0.893
+against 0.885). Fusion buys ordering quality on paraphrased questions and pays
 a little at rank one on literal ones. On the all slice BM25's hit@1 lead has
-reopened - 0.696 against 0.685, one question - after having closed to a tie at
-eighteen documents, which is the same one-question churn read from the other
+closed to a tie again - 0.736 against 0.736 - having reopened at twenty
+documents, which is the same one-question churn read from the other
 end.
 
 One documented behaviour has now moved twice, which is worth tracking rather
@@ -532,28 +543,29 @@ a genuinely different opinion rather than a paraphrase of an existing one.
 `hybrid2` is the shipped two-list fusion, `ngram` is the n-gram list alone and
 `hybrid3` is all three fused.
 
-**all 92 questions, k=5**
+**all 106 questions, k=5**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid2 | 0.685 | 0.880 | 0.924 | 0.853 | 0.772 | 0.787 |
-| **ngram** | **0.772** | **0.935** | **0.978** | **0.935** | **0.853** | **0.855** |
-| hybrid3 | 0.739 | 0.902 | 0.946 | 0.886 | 0.814 | 0.827 |
+| hybrid2 | 0.736 | 0.877 | 0.934 | 0.858 | 0.784 | 0.809 |
+| **ngram** | **0.802** | **0.934** | **0.972** | **0.920** | **0.852** | **0.869** |
+| hybrid3 | 0.764 | 0.915 | 0.953 | 0.896 | 0.824 | 0.841 |
 
-**hard slice (38 questions, 21 with two relevant documents)**
+**hard slice (46 questions, 28 with two relevant documents)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid2 | 0.526 | 0.816 | 0.868 | 0.697 | 0.603 | 0.674 |
-| **ngram** | **0.605** | **0.842** | **0.947** | **0.842** | **0.712** | **0.740** |
-| hybrid3 | 0.579 | 0.816 | 0.895 | 0.750 | 0.656 | 0.714 |
+| hybrid2 | 0.609 | 0.804 | 0.870 | 0.696 | 0.622 | 0.711 |
+| **ngram** | **0.674** | **0.848** | **0.935** | **0.815** | **0.716** | **0.774** |
+| hybrid3 | 0.630 | 0.848 | 0.913 | 0.783 | 0.679 | 0.741 |
 
 **The result is the largest this project has measured, and it is not the result
 the experiment was designed to find.** The n-gram list was added as a third
 input to the fusion. It beats the fusion - alone, on every column of both
-slices. Against `hybrid2` on the hard questions it takes hit@1 from 0.526 to
-0.605 and recall@5 from 0.697 to 0.842, which is six of thirty-eight questions
-where the answer was simply not in the top five before.
+slices. Against `hybrid2` on the hard questions it takes hit@1 from 0.609 to
+0.674 and recall@5 from 0.696 to 0.815, and its hit@5 of 0.935 against 0.870 is
+three of forty-six questions where the answer was simply not in the top five
+before.
 
 **And `hybrid3` lands between its inputs, which is the finding worth keeping.**
 Fusing the strong list with the two weaker ones is *worse than the strong list
@@ -568,8 +580,8 @@ retrieval gets better - is the thing this table refutes. What made retrieval
 better was changing the representation; the fusion then gave part of it back.
 
 Two cautions before anyone reads this as "character n-grams beat words". The
-first is arithmetic: 92 questions, so the 0.087 gap in hit@1 is eight questions,
-and the hard slice is 38, where one question is 0.026. The second is structural,
+first is arithmetic: 106 questions, so the 0.066 gap in hit@1 is seven questions,
+and the hard slice is 46, where one question is 0.022. The second is structural,
 and it matters more. The mechanism that wins here - partial credit for shared
 substrings - is the same mechanism that should *lose* on a corpus of lexically
 similar documents, because n-grams blur distinctions that whole words preserve.
@@ -1591,33 +1603,67 @@ wrong neighbour. That strategy is not an aesthetic preference. Writing questions
 that *separate* the methods moves the table as hard as writing four times as
 many that do not.
 
+**That claim was tested directly at twenty-two documents, and the half of it
+about question-writing did not survive.** The increment that added
+`query-performance-prediction.md` and `passage-aggregation.md` also added
+fourteen gold questions written specifically to separate `hybrid2` from `bm25` -
+the comparison sitting at an 8.7% discordance rate and therefore the one the
+grid said was most expensive. Eight of the fourteen were phrased entirely in a
+near-neighbour document's vocabulary, avoiding the target's own terms, which is
+the construction that is supposed to punish a purely lexical list. Holding the
+question set fixed at the original ninety-two and changing only the corpus
+separates the two levers:
+
+| `hybrid2` vs `bm25`, nDCG@5 | W/L/T | discordance |
+| --- | --- | --- |
+| 20 documents, the original 92 questions | 3/5/84 | 8.7% |
+| 22 documents, **the same** 92 questions | 5/8/79 | 14.1% |
+| 22 documents, the 14 new questions only | 1/1/12 | 14.3% |
+| 22 documents, all 106 questions | 6/9/91 | 14.2% |
+
+Every point of the gain came from the two documents. They lifted discordance on
+ninety-two questions that were not edited, from 8.7% to 14.1%, because adding a
+document changes what all of the existing questions compete against. The
+fourteen purpose-built questions then landed at 14.3% - the prevailing rate,
+not above it - so they added draws without adding discrimination. On
+`hybrid3 vs hybrid2` they were worse than neutral: 0 wins, 0 losses, 14 ties,
+which pulled that comparison's rate down from 22.8% to 19.8%.
+
+The caveat that keeps this from being a stronger claim is that fourteen
+questions yielding two disagreements estimates a rate to somewhere between about
+2% and 43%, so the honest statement is "they did not visibly out-discriminate",
+not "question design cannot work". The corpus effect, measured on an unchanged
+question set, is the one that is clearly visible. The practical revision is that
+**documents are the lever and questions are the follow-on**: a new document
+re-prices every question already in the set, while a new question is one more
+draw at whatever rate the corpus currently supports.
+
 Then the three claims, priced against their own observed splits:
 
-| claim | W/L/T | rate | obs. share | questions needed | verdict at n=92 |
+| claim | W/L/T | rate | obs. share | questions needed | verdict at n=106 |
 | --- | --- | --- | --- | --- | --- |
-| ngram vs hybrid3 | 22/12/58 | 37.0% | 0.65 | 258 | NOT SHOWN |
-| hybrid3 vs hybrid2 | 16/2/74 | 19.6% | 0.89 | 68 | SUPPORTED |
-| hybrid2 vs bm25 | 3/5/84 | 8.7% | 0.38 | 1513 | NOT SHOWN |
+| ngram vs hybrid3 | 23/12/71 | 33.0% | 0.66 | 254 | NOT SHOWN |
+| hybrid3 vs hybrid2 | 20/1/85 | 19.8% | 0.95 | 48 | SUPPORTED |
+| hybrid2 vs bm25 | 6/9/91 | 14.2% | 0.40 | 1443 | NOT SHOWN |
 
 **The last column is not an input to the fourth.** Required-sample-size is
 derived from the binomial alone, with no knowledge of what the significance
 harness concluded, and the two agree three times out of three: the one claim
-needing fewer questions than the set holds (68 ≤ 92) is the one that came back
-SUPPORTED, and both claims needing more (258 and 1513) are the ones that came
+needing fewer questions than the set holds (48 ≤ 106) is the one that came back
+SUPPORTED, and both claims needing more (254 and 1443) are the ones that came
 back NOT SHOWN. That agreement is the reason to trust the grid above, and
 `tests/test_power.py` pins it so a future divergence shows up as a failure
 rather than a quiet drift.
 
 Read the bottom row carefully, because it is the most useful line in the table
 and the easiest to misread. `hybrid2 vs bm25` is the project's headline claim,
-and its observed share is 0.38 - **below** 0.5, meaning the three discordant
-questions fusion wins are outnumbered by the five it loses. The 1513 is what it
+and its observed share is 0.40 - **below** 0.5, meaning the six discordant
+questions fusion wins are outnumbered by the nine it loses. The 1443 is what it
 would cost to establish an effect of that magnitude *in either direction*. The
-honest reading is not "1513 questions would vindicate fusion". It is that after
-twenty documents and 92 questions the fusion-versus-BM25 comparison has
-accumulated eight disagreements in total, which is one above the floor where
-significance becomes arithmetically possible at all, and the effect such as it
-is points the wrong way.
+honest reading is not "1443 questions would vindicate fusion". It is that after
+twenty-two documents and 106 questions the fusion-versus-BM25 comparison has
+accumulated fifteen disagreements in total, and the effect such as it is points
+the wrong way.
 
 Two caveats, stated plainly because the second is a genuine statistical trap.
 First, an observed share near 0.50 sends the required sample to infinity, which
