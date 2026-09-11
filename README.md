@@ -89,16 +89,17 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, nDCG@k, MRR |
 | `ragkb/perturb.py` | seeded, keyboard-aware query corruption plus the edit distance that measures it |
 | `ragkb/significance.py` | paired bootstrap intervals, randomization tests, and Holm familywise correction |
-| `ragkb/power.py` | exact sign-test power and required gold-set size: how many questions a difference would need |
+| `ragkb/power.py` | exact sign-test power, required gold-set size, exact binomial intervals, and the paired McNemar test |
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `explain`, `index`, `--mmr`, `--expand`, `--rerank`, `--ngram`, `--abstain`, `--index` |
 | `evals/tune.py` | index-time sweep: chunk size, chunk overlap, `rrf_k` (2 or 3 lists) |
 | `evals/failures.py` | per-question failure analysis: where a missed document really ranks, and which lever recovers it |
 | `evals/robustness.py` | the same ablation under misspelled queries: which methods degrade, and how fast |
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
 | `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
+| `evals/corpus_lever.py` | which half of an increment moved the discordance rate: the new documents, or the new questions |
 
-`corpus/` holds the sample knowledge base (twenty-two documents on information
-retrieval). `evals/gold.jsonl` holds one hundred and six labelled questions with
+`corpus/` holds the sample knowledge base (twenty-four documents on information
+retrieval). `evals/gold.jsonl` holds one hundred and eighteen labelled questions with
 the documents that answer them, split into an `easy` and a `hard` slice.
 `evals/unanswerable.jsonl` holds twenty-two questions the corpus deliberately
 cannot answer, split into `off-domain` and `near-domain`, which is what the
@@ -110,6 +111,7 @@ abstention gate is measured against.
 python evals/evaluate.py     # ablation + query-time sweeps + the third retriever
 python evals/significance.py # error bars: which of those differences are real
 python evals/power.py        # how many questions the differences would need to be real
+python evals/corpus_lever.py  # did the new documents or the new questions move the rate?
 python evals/holdout.py      # what each sweep's top row cost by picking itself
 python evals/tune.py         # index-time sweeps (chunk size, overlap, rrf_k)
 python evals/tune.py --ngram 4   # the same rrf_k sweep against three lists
@@ -121,11 +123,11 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (22 documents, 105 chunks,
-106 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (24 documents, 116 chunks,
+118 questions, k=5, document-level relevance).
 
 > **Provenance.** The ablation, three-list, significance and power sections
-> below were recomputed at twenty-two documents. The index-time and query-time
+> below were recomputed at twenty-four documents. The index-time and query-time
 > sweeps that were not re-run for that increment - chunking, `rrf_k`, the MMR
 > lambda sweep, holdout, latency, robustness and persistence - still report the
 > twenty-document, ninety-two-question figures and say so in place. They are
@@ -538,33 +540,33 @@ python evals/tune.py --ngram 4        # re-sweep rrf_k against three lists
 ```
 
 Adding it drops the mean pairwise top-5 overlap between the fused lists from
-0.861 to 0.672, which is the mechanism working: the third list is contributing
+0.847 to 0.664, which is the mechanism working: the third list is contributing
 a genuinely different opinion rather than a paraphrase of an existing one.
 `hybrid2` is the shipped two-list fusion, `ngram` is the n-gram list alone and
 `hybrid3` is all three fused.
 
-**all 106 questions, k=5**
+**all 118 questions, k=5**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid2 | 0.736 | 0.877 | 0.934 | 0.858 | 0.784 | 0.809 |
-| **ngram** | **0.802** | **0.934** | **0.972** | **0.920** | **0.852** | **0.869** |
-| hybrid3 | 0.764 | 0.915 | 0.953 | 0.896 | 0.824 | 0.841 |
+| hybrid2 | 0.712 | 0.847 | 0.915 | 0.843 | 0.769 | 0.790 |
+| **ngram** | **0.771** | **0.949** | **0.975** | **0.924** | **0.850** | **0.859** |
+| hybrid3 | 0.746 | 0.915 | 0.924 | 0.860 | 0.803 | 0.826 |
 
-**hard slice (46 questions, 28 with two relevant documents)**
+**hard slice (52 questions, 31 with two relevant documents)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid2 | 0.609 | 0.804 | 0.870 | 0.696 | 0.622 | 0.711 |
-| **ngram** | **0.674** | **0.848** | **0.935** | **0.815** | **0.716** | **0.774** |
-| hybrid3 | 0.630 | 0.848 | 0.913 | 0.783 | 0.679 | 0.741 |
+| hybrid2 | 0.558 | 0.750 | 0.846 | 0.683 | 0.595 | 0.671 |
+| **ngram** | **0.635** | **0.885** | **0.942** | **0.827** | **0.719** | **0.760** |
+| hybrid3 | 0.596 | 0.846 | 0.846 | 0.702 | 0.635 | 0.708 |
 
 **The result is the largest this project has measured, and it is not the result
 the experiment was designed to find.** The n-gram list was added as a third
 input to the fusion. It beats the fusion - alone, on every column of both
-slices. Against `hybrid2` on the hard questions it takes hit@1 from 0.609 to
-0.674 and recall@5 from 0.696 to 0.815, and its hit@5 of 0.935 against 0.870 is
-three of forty-six questions where the answer was simply not in the top five
+slices. Against `hybrid2` on the hard questions it takes hit@1 from 0.558 to
+0.635 and recall@5 from 0.683 to 0.827, and its hit@5 of 0.942 against 0.846 is
+five of fifty-two questions where the answer was simply not in the top five
 before.
 
 **And `hybrid3` lands between its inputs, which is the finding worth keeping.**
@@ -580,8 +582,8 @@ retrieval gets better - is the thing this table refutes. What made retrieval
 better was changing the representation; the fusion then gave part of it back.
 
 Two cautions before anyone reads this as "character n-grams beat words". The
-first is arithmetic: 106 questions, so the 0.066 gap in hit@1 is seven questions,
-and the hard slice is 46, where one question is 0.022. The second is structural,
+first is arithmetic: 118 questions, so the 0.059 gap in hit@1 is seven questions,
+and the hard slice is 52, where one question is 0.019. The second is structural,
 and it matters more. The mechanism that wins here - partial credit for shared
 substrings - is the same mechanism that should *lose* on a corpus of lexically
 similar documents, because n-grams blur distinctions that whole words preserve.
@@ -1574,12 +1576,12 @@ both methods already answer correctly adds to `n` and contributes exactly
 nothing to the test.
 
 What this gold set can resolve, before looking at any result: the three claim
-comparisons disagree on 21.7% of questions on average, about 20 discordant pairs
-out of 92. At that rate **the smallest effect 92 questions can detect at 80%
-power is a win share of 0.819** - one method has to take 82% of the
+comparisons disagree on 21.2% of questions on average, about 25 discordant pairs
+out of 118. At that rate **the smallest effect 118 questions can detect at 80%
+power is a win share of 0.789** - one method has to take 79% of the
 disagreements. Against a genuinely small effect (win share 0.60) this gold set
-has **9.9% power**. It would miss a real difference of that size nine times in
-ten.
+has **11.9% power**. It would miss a real difference of that size nearly nine
+times in ten.
 
 Required questions by assumed truth, which looks at no result at all and would
 print the same numbers if every retriever here were replaced tomorrow:
@@ -1603,67 +1605,110 @@ wrong neighbour. That strategy is not an aesthetic preference. Writing questions
 that *separate* the methods moves the table as hard as writing four times as
 many that do not.
 
-**That claim was tested directly at twenty-two documents, and the half of it
-about question-writing did not survive.** The increment that added
-`query-performance-prediction.md` and `passage-aggregation.md` also added
-fourteen gold questions written specifically to separate `hybrid2` from `bm25` -
-the comparison sitting at an 8.7% discordance rate and therefore the one the
-grid said was most expensive. Eight of the fourteen were phrased entirely in a
-near-neighbour document's vocabulary, avoiding the target's own terms, which is
-the construction that is supposed to punish a purely lexical list. Holding the
-question set fixed at the original ninety-two and changing only the corpus
-separates the two levers:
+**That claim was tested directly at twenty-two documents, then re-tested at
+twenty-four with a proper instrument, and it did not survive either.**
+`evals/corpus_lever.py` is that instrument. It builds the engine twice - once
+on the corpus as it was, once as it is - holds the question set fixed at the
+questions that predate the increment, and reports the discordance rate for each
+arm. Because only the corpus differs between those two rows, the document
+effect is isolated from the question effect by construction.
 
-| `hybrid2` vs `bm25`, nDCG@5 | W/L/T | discordance |
-| --- | --- | --- |
-| 20 documents, the original 92 questions | 3/5/84 | 8.7% |
-| 22 documents, **the same** 92 questions | 5/8/79 | 14.1% |
-| 22 documents, the 14 new questions only | 1/1/12 | 14.3% |
-| 22 documents, all 106 questions | 6/9/91 | 14.2% |
+The first increment it was pointed at was the previous one, which added
+`query-performance-prediction.md` and `passage-aggregation.md` plus fourteen
+gold questions written specifically to separate `hybrid2` from `bm25`. Eight of
+the fourteen were phrased entirely in a near-neighbour document's vocabulary,
+avoiding the target's own terms, which is the construction that is supposed to
+punish a purely lexical list. `--exclude` rolls the corpus back so that
+increment can be re-measured today:
 
-Every point of the gain came from the two documents. They lifted discordance on
-ninety-two questions that were not edited, from 8.7% to 14.1%, because adding a
-document changes what all of the existing questions compete against. The
-fourteen purpose-built questions then landed at 14.3% - the prevailing rate,
-not above it - so they added draws without adding discrimination. On
-`hybrid3 vs hybrid2` they were worse than neutral: 0 wins, 0 losses, 14 ties,
-which pulled that comparison's rate down from 22.8% to 19.8%.
+```
+python evals/corpus_lever.py --exclude relevance-feedback,score-normalisation \
+    --added query-performance-prediction,passage-aggregation --pair hybrid2,bm25
+```
 
-The caveat that keeps this from being a stronger claim is that fourteen
-questions yielding two disagreements estimates a rate to somewhere between about
-2% and 43%, so the honest statement is "they did not visibly out-discriminate",
-not "question design cannot work". The corpus effect, measured on an unchanged
-question set, is the one that is clearly visible. The practical revision is that
-**documents are the lever and questions are the follow-on**: a new document
-re-prices every question already in the set, while a new question is one more
-draw at whatever rate the corpus currently supports.
+| `hybrid2` vs `bm25`, nDCG@5 | W/L/T | discordance | exact 95% CI |
+| --- | --- | --- | --- |
+| 20 documents, the original 92 questions | 3/5/84 | 8.7% | [3.8%, 16.4%] |
+| 22 documents, **the same** 92 questions | 5/8/79 | 14.1% | [7.7%, 23.0%] |
+| 22 documents, the 14 new questions only | 1/1/12 | 14.3% | [1.8%, 42.8%] |
+| 22 documents, all 106 questions | 6/9/91 | 14.2% | [8.1%, 22.3%] |
+
+The four counts reproduce the hand-computed table this section used to carry,
+digit for digit, which is the reason to trust the two columns that are new. The
+intervals are Clopper-Pearson, exact rather than normal-approximate, and the
+third row's `[1.8%, 42.8%]` is the same range the old prose estimated in words.
+
+**The conclusion drawn from that table was wrong, and the error was not in the
+counts.** It read 8.7% rising to 14.1% as the document lever working, and
+called the effect "clearly visible". But those two rows are measured on *the
+same ninety-two questions*, so they are paired, and the right test asks how many
+individual questions changed status rather than comparing two marginal rates.
+Eight questions became discordant and three stopped; under the null that the
+change was symmetric that is an exact two-sided p of **0.227**. The rate moved.
+Nothing established that the corpus moved it.
+
+The replication is worse for the claim than the re-analysis is. This increment
+added `score-normalisation.md` and `relevance-feedback.md`, both placed beside
+an existing document they share heavy vocabulary with, exactly as the strategy
+prescribes - and all three claim comparisons moved *down*:
+
+| pair, nDCG@5 | 22 docs, carried 106 | 24 docs, **same** 106 | switched | exact p |
+| --- | --- | --- | --- | --- |
+| hybrid2 vs bm25 | 14.2% (15) | 10.4% (11) | 2 gained, 6 lost | 0.289 |
+| hybrid3 vs hybrid2 | 19.8% (21) | 18.9% (20) | 2 gained, 3 lost | 1.000 |
+| ngram vs hybrid3 | 33.0% (35) | 32.1% (34) | 2 gained, 3 lost | 1.000 |
+
+Two increments, five paired measurements, nothing significant, and the sign
+flipped between them. **The honest standing of "documents are the lever" is
+that it is unsupported**, and it was only ever supported by reading a paired
+design as an unpaired one. The twelve new questions, meanwhile, landed at 25.0%,
+25.0% and 33.3% - at or above the prevailing rate on all three pairs, which is
+the opposite of what the previous increment concluded about question-writing,
+and on twelve questions carries an interval spanning most of the unit range.
+Neither lever has been demonstrated. The grid above is still the finding; what
+changed is that the corpus-growth strategy sitting underneath it is now a
+hypothesis with two null results against it rather than a result.
+
+What survives is narrower and worth stating on its own: a new document re-prices
+every question already in the set, which is a mechanism, not a claimed
+direction. It can raise the discordance rate or lower it, and at this corpus
+size the measurement cannot tell which it did.
 
 Then the three claims, priced against their own observed splits:
 
-| claim | W/L/T | rate | obs. share | questions needed | verdict at n=106 |
+| claim | W/L/T | rate | obs. share | questions needed | verdict at n=118 |
 | --- | --- | --- | --- | --- | --- |
-| ngram vs hybrid3 | 23/12/71 | 33.0% | 0.66 | 254 | NOT SHOWN |
-| hybrid3 vs hybrid2 | 20/1/85 | 19.8% | 0.95 | 48 | SUPPORTED |
-| hybrid2 vs bm25 | 6/9/91 | 14.2% | 0.40 | 1443 | NOT SHOWN |
+| ngram vs hybrid3 | 28/10/80 | 32.2% | 0.74 | 116 | NOT SHOWN |
+| hybrid3 vs hybrid2 | 21/2/95 | 19.5% | 0.91 | 59 | NOT SHOWN |
+| hybrid2 vs bm25 | 7/7/104 | 11.9% | 0.50 | - | NOT SHOWN |
 
 **The last column is not an input to the fourth.** Required-sample-size is
 derived from the binomial alone, with no knowledge of what the significance
-harness concluded, and the two agree three times out of three: the one claim
-needing fewer questions than the set holds (48 ≤ 106) is the one that came back
-SUPPORTED, and both claims needing more (254 and 1443) are the ones that came
-back NOT SHOWN. That agreement is the reason to trust the grid above, and
-`tests/test_power.py` pins it so a future divergence shows up as a failure
-rather than a quiet drift.
+harness concluded. At twenty-two documents the two agreed three times out of
+three. At twenty-four they agree twice: `ngram vs hybrid3` needs 116 questions
+against a set of 118 and comes back NOT SHOWN, which is the grid and the harness
+disagreeing at the boundary - and a required-sample-size that barely clears `n`
+is precisely where a *typical* draw and *this* draw can differ. It is worth
+reading as the grid's resolution limit rather than as a contradiction.
+
+**A claim was lost this increment, and it should not be passed over.**
+`hybrid3 vs hybrid2` came back SUPPORTED at twenty-two documents and comes back
+NOT SHOWN at twenty-four, at `p_holm` 0.057 - just the wrong side of the line
+its own harness draws. Its raw split barely moved (20/1/85 to 21/2/95); what
+moved is that one discordant question flipped to a loss, and at these counts one
+question is the difference between a claim and a non-claim. That is the same
+fragility the significance section warns about, arriving on the project's own
+side of the ledger, and it is the strongest single argument in this file for
+growing the gold set before trusting any of these verdicts.
 
 Read the bottom row carefully, because it is the most useful line in the table
 and the easiest to misread. `hybrid2 vs bm25` is the project's headline claim,
-and its observed share is 0.40 - **below** 0.5, meaning the six discordant
-questions fusion wins are outnumbered by the nine it loses. The 1443 is what it
-would cost to establish an effect of that magnitude *in either direction*. The
-honest reading is not "1443 questions would vindicate fusion". It is that after
-twenty-two documents and 106 questions the fusion-versus-BM25 comparison has
-accumulated fifteen disagreements in total, and the effect such as it is points
-the wrong way.
+and its observed share is now exactly 0.50 - the seven discordant questions the
+fusion wins are matched by the seven it loses, so the required sample diverges
+and the table prints a dash. That is the correct output, not a gap: it reports
+"no effect worth sizing was seen here". After twenty-four documents and 118
+questions the fusion-versus-BM25 comparison has accumulated fourteen
+disagreements in total and they split evenly.
 
 Two caveats, stated plainly because the second is a genuine statistical trap.
 First, an observed share near 0.50 sends the required sample to infinity, which
@@ -1674,10 +1719,12 @@ function of the p-value, so it restates the result and calls it a diagnosis, and
 a non-significant finding always comes back with low observed power by
 construction. Every figure here is conditional and prospective: *if the truth
 were this, this is what it would cost to see it.* The observed splits are
-hypotheses resting on eight to thirty-four disagreements, which pin a proportion
-to roughly a third either way at the low end, so the claims table carries error
-bars far wider than the grid above it. The grid is the finding; the claims table
-is an illustration of how to use it.
+hypotheses resting on fourteen to thirty-eight disagreements, which pin a
+proportion to roughly a third either way at the low end, so the claims table
+carries error bars far wider than the grid above it. `ragkb.power.clopper_pearson`
+is the function that makes those bars explicit, and `evals/corpus_lever.py`
+prints them beside every rate it reports. The grid is the finding; the claims
+table is an illustration of how to use it.
 
 ### What each stage costs
 
@@ -2164,7 +2211,7 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 462 tests
+pytest -q      # 535 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
@@ -2229,8 +2276,16 @@ length in the one direction it can, that a substitution stays on a physically
 adjacent key, that a requested rate is never overshot, and - the test that
 caught a real measurement bug - that a transposition costs one edit rather than
 the two plain Levenshtein would charge, which had been inflating every realised
-noise rate the harness reported), and an end-to-end pass over the real corpus
-and gold set.
+noise rate the harness reported), the corpus-versus-questions lever (the exact
+binomial interval checked against its own closed form at both boundaries, the
+textbook 3-of-10 value, its symmetry under counting failures instead of
+successes, and the defining property that its bounds invert the exact binomial
+test; the paired McNemar p-value against the hand-computed `2 ** (1 - d)` floor
+and a hand-summed tail; and the partition that decides which questions predate
+an increment - in particular that a question naming one old and one new document
+is *not* carried, since scoring it against a corpus missing half its answer key
+would charge the retriever for the setup), and an end-to-end pass over the real
+corpus and gold set.
 
 One of those tests exists because a bug shipped into a draft: `--ngram` was
 first declared with argparse's `nargs="?"`, which quietly consumes the

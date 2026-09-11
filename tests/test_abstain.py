@@ -78,19 +78,41 @@ def test_in_vocabulary_question_reports_no_unknown_terms(engine):
     assert report_for(engine, "how does reciprocal rank fusion work").unknown_terms == []
 
 
-def test_morphology_counts_as_unknown(engine):
+def test_morphology_counts_as_unknown():
     """A documented weakness, pinned so it cannot change silently.
 
-    Tokenisation does no stemming, so a query saying "control" against a
-    corpus that says "controls" charges that term the maximum IDF and pushes
+    Tokenisation does no stemming, so a query saying "control" against a corpus
+    that only ever says "controls" charges that term the maximum IDF and pushes
     the question toward abstention. The character n-gram index
     (:mod:`ragkb.ngram`) is the piece that already handles this for retrieval;
     the gate does not yet consult it.
+
+    Run against a two-document corpus written for the purpose rather than
+    against the shipped one. This test used to name "control" and assert it was
+    unknown to the real corpus, which held only until some later document
+    happened to use the singular - a corpus-growth increment then failed it
+    without anything about stemming having changed. A property of the tokeniser
+    should not be hostage to which words twenty-four documents happen to
+    contain, so the condition is now constructed instead of found.
     """
-    report = report_for(engine, ANSWERABLE)
+    documents = {
+        "knobs": (
+            "The b parameter controls how strongly document length is used. "
+            "Two knobs govern the ranking function and both have defaults."
+        ),
+        "other": "An unrelated document about chunking and overlap.",
+    }
+    engine = RAGEngine(documents, config=EngineConfig())
+    report = report_for(engine, "what does the b parameter control")
+    # "controls" is indexed; "control" is a different token entirely.
     assert "control" in report.unknown_terms
-    # It costs the score without sinking it: the rest of the query still
-    # matches, so the question is answered.
+    assert "controls" not in report.unknown_terms
+
+
+def test_one_unknown_term_costs_the_score_without_sinking_it(engine):
+    """The other half of the weakness: it is a penalty, not a veto."""
+    report = report_for(engine, ANSWERABLE + " frobnicate")
+    assert "frobnicate" in report.unknown_terms
     assert report.answerable is True
 
 

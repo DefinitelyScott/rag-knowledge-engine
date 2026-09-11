@@ -400,6 +400,97 @@ def rates_from_counts(wins: int, losses: int, n: int) -> Tuple[float, float]:
     return discordant / float(n), wins / float(discordant)
 
 
+def clopper_pearson(
+    successes: int, trials: int, confidence: float = 0.95
+) -> Tuple[float, float]:
+    """Exact two-sided confidence interval for a binomial proportion.
+
+    Both rates this module trades in - ``discordance_rate`` and ``win_share`` -
+    are proportions estimated from counts that are routinely in the single
+    digits, and :func:`rates_from_counts` hands them over as bare point
+    estimates. Two disagreements out of fourteen questions is 14.3%, and quoting
+    that figure beside a 14.1% measured on ninety-two questions invites a
+    comparison the smaller sample cannot support. This function is what makes
+    that visible: the same 2/14 carries an interval of roughly 1.8% to 42.8%,
+    which is most of the range the rate could plausibly take.
+
+    The interval is the Clopper-Pearson one, defined by inverting the exact
+    binomial test rather than by a normal approximation. The lower bound is the
+    ``p`` at which ``P(X >= successes) = (1 - confidence) / 2``, and the upper
+    bound the ``p`` at which ``P(X <= successes) = (1 - confidence) / 2``; each
+    tail is monotone in ``p``, so bisection finds them without needing a beta
+    quantile from outside the standard library. The result is conservative -
+    actual coverage is at least ``confidence``, usually a little above - which
+    is the right direction to err for a number whose job is to stop a small
+    sample being over-read.
+
+    ``successes = 0`` and ``successes = trials`` are handled as the degenerate
+    cases they are: the interval runs to the boundary on that side exactly,
+    because no evidence contradicts a rate of zero (or one).
+    """
+    if trials <= 0:
+        raise ValueError("trials must be positive")
+    if not 0 <= successes <= trials:
+        raise ValueError(
+            "successes must be in [0, {}], got {}".format(trials, successes)
+        )
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be in (0, 1), got {}".format(confidence))
+
+    tail = (1.0 - confidence) / 2.0
+
+    def _bisect(predicate) -> float:
+        low, high = 0.0, 1.0
+        for _ in range(200):
+            mid = (low + high) / 2.0
+            if predicate(mid):
+                low = mid
+            else:
+                high = mid
+        return (low + high) / 2.0
+
+    if successes == 0:
+        lower = 0.0
+    else:
+        # P(X >= successes) rises with p; the bound is where it reaches `tail`.
+        lower = _bisect(lambda p: binomial_upper_tail(successes, trials, p) < tail)
+    if successes == trials:
+        upper = 1.0
+    else:
+        # P(X <= successes) falls with p; the bound is where it drops to `tail`.
+        upper = _bisect(lambda p: binomial_lower_tail(successes, trials, p) > tail)
+    return lower, upper
+
+
+def mcnemar_exact(gained: int, lost: int) -> float:
+    """Exact two-sided p-value for a change in a paired binary classification.
+
+    Written for the one comparison :mod:`evals.corpus_lever` makes that two
+    independent confidence intervals cannot make: the discordance rate before
+    and after a corpus change is measured on **the same questions**, so the two
+    rates are paired, and a pair of marginal intervals throws that pairing away
+    and reports far more uncertainty than the design actually carries.
+
+    Only the questions that *changed* status carry information, exactly as only
+    discordant questions carry information in the sign test this module is
+    otherwise about. A question discordant both before and after, or concordant
+    both times, is uninformative about whether anything moved. Under the null
+    that the change was symmetric, each of the ``gained + lost`` switchers is an
+    independent coin flip, so this is the same exact binomial as everywhere else
+    in this module, applied one level up.
+
+    Returns 1.0 when nothing switched, which is the correct reading of "no
+    evidence of a change" rather than a degenerate case needing a guard.
+    """
+    if gained < 0 or lost < 0:
+        raise ValueError("counts cannot be negative")
+    switchers = gained + lost
+    if switchers == 0:
+        return 1.0
+    smaller = min(gained, lost)
+    return min(1.0, 2.0 * binomial_lower_tail(smaller, switchers, 0.5))
+
+
 def requirement_grid(
     discordance_rates: Sequence[float],
     win_shares: Sequence[float],

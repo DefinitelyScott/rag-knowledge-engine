@@ -104,3 +104,15 @@
 {"id": "h44", "question": "Which way of collapsing fragment scores is least suited to a question whose answer has to be gathered from several places at once?", "relevant": ["passage-aggregation", "multi-hop-retrieval"], "difficulty": "hard"}
 {"id": "h45", "question": "How does totalling every fragment's score undo the correction the ranking function already made for document length?", "relevant": ["passage-aggregation", "bm25"], "difficulty": "hard"}
 {"id": "h46", "question": "Why might a pipeline assembling text for a generator not want whole documents ranked at all?", "relevant": ["passage-aggregation", "rag"], "difficulty": "hard"}
+{"id": "q61", "question": "What does min-max normalisation subtract and divide by when rescaling a list of retrieval scores?", "relevant": ["score-normalisation"], "difficulty": "easy"}
+{"id": "q62", "question": "How does CombMNZ differ from CombSUM when combining normalised scores?", "relevant": ["score-normalisation"], "difficulty": "easy"}
+{"id": "q63", "question": "Why replace the observed maximum and minimum with theoretical bounds when normalising?", "relevant": ["score-normalisation"], "difficulty": "easy"}
+{"id": "q64", "question": "What three weights does Rocchio place on the original query and the two centroids?", "relevant": ["relevance-feedback"], "difficulty": "easy"}
+{"id": "q65", "question": "How does RM3 keep an expanded query model anchored to the original question?", "relevant": ["relevance-feedback"], "difficulty": "easy"}
+{"id": "q66", "question": "What is residual ranking and why is it used when evaluating relevance feedback?", "relevant": ["relevance-feedback"], "difficulty": "easy"}
+{"id": "h47", "question": "If the positions are thrown away and the raw numbers kept instead, what has to be repaired first, and what does keeping them buy?", "relevant": ["score-normalisation", "rank-fusion"], "difficulty": "hard"}
+{"id": "h48", "question": "Why is the smallest value in a shortlist a poor anchor for rescaling, and what does changing how deep you go do to it?", "relevant": ["score-normalisation"], "difficulty": "hard"}
+{"id": "h49", "question": "Which merging rule pays a document extra for having been found by more than one source?", "relevant": ["score-normalisation"], "difficulty": "hard"}
+{"id": "h50", "question": "Why is evidence about what a searcher did not want worth far less than evidence about what they did?", "relevant": ["relevance-feedback"], "difficulty": "hard"}
+{"id": "h51", "question": "Why can a reformulation step lift the average across a question set and still be the wrong thing to switch on by default?", "relevant": ["relevance-feedback", "query-performance-prediction"], "difficulty": "hard"}
+{"id": "h52", "question": "Why does judging a second pass on the very material that supplied its new words overstate how much it helped?", "relevant": ["relevance-feedback", "evaluation"], "difficulty": "hard"}
