@@ -491,6 +491,76 @@ def mcnemar_exact(gained: int, lost: int) -> float:
     return min(1.0, 2.0 * binomial_lower_tail(smaller, switchers, 0.5))
 
 
+def fisher_exact(a: int, b: int, c: int, d: int) -> float:
+    """Exact two-sided p-value for independence in a 2x2 table.
+
+    Added for the one question :mod:`ragkb.difficulty` has to answer before its
+    other numbers mean anything: is the gold set's hand-assigned ``difficulty``
+    label an axis of its own, or is it just restating how many documents answer
+    the question? That is a 2x2 table of counts, and the counts in one cell are
+    routinely zero, which is the regime where a chi-squared approximation is
+    least trustworthy and most likely to be quoted anyway.
+
+    The table is read as::
+
+        a  b
+        c  d
+
+    and the p-value sums the hypergeometric probability of every table with the
+    same row and column margins whose probability is no greater than the
+    observed one. That is Fisher's original two-sided construction (the
+    "sum of small p" convention) rather than doubling one tail, so it does not
+    depend on which way round the table was written: the value is invariant
+    under transposing it or swapping either pair of rows or columns, and
+    ``tests/test_difficulty.py`` pins all four symmetries.
+
+    Conditioning on both margins is what makes it exact with no minimum cell
+    count. It also makes it conservative, which is the right direction for a
+    number whose job here is to refuse to declare a confound absent.
+    """
+    for value in (a, b, c, d):
+        if value < 0:
+            raise ValueError("counts cannot be negative")
+    row1, row2 = a + b, c + d
+    col1, col2 = a + c, b + d
+    total = row1 + row2
+    if total == 0:
+        raise ValueError("table is empty")
+    # An empty margin leaves nothing free to vary: every table with these
+    # margins is the observed one, so independence cannot be contradicted.
+    if row1 == 0 or row2 == 0 or col1 == 0 or col2 == 0:
+        return 1.0
+
+    def _log_choose(n: int, k: int) -> float:
+        return (
+            math.lgamma(n + 1) - math.lgamma(k + 1) - math.lgamma(n - k + 1)
+        )
+
+    def _log_prob(cell: int) -> float:
+        """log P(a = cell) under the hypergeometric with these margins."""
+        return (
+            _log_choose(col1, cell)
+            + _log_choose(col2, row1 - cell)
+            - _log_choose(total, row1)
+        )
+
+    observed = _log_prob(a)
+    low = max(0, row1 - col2)
+    high = min(row1, col1)
+    # Sum in probability space over a range bounded by min(row1, col1) + 1
+    # terms, so the loop is short for any table these modules build.
+    p_value = 0.0
+    for cell in range(low, high + 1):
+        log_p = _log_prob(cell)
+        # 1e-9 of slack in log space, so the observed table and any table of
+        # genuinely equal probability are both counted. Without it a symmetric
+        # table can drop its own mirror image to floating-point noise and
+        # return half the p-value it should.
+        if log_p <= observed + 1e-9:
+            p_value += math.exp(log_p)
+    return min(1.0, p_value)
+
+
 def requirement_grid(
     discordance_rates: Sequence[float],
     win_shares: Sequence[float],

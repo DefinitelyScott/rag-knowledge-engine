@@ -31,6 +31,8 @@ reproduced exactly.
 
 from __future__ import annotations
 
+import itertools
+import math
 import random
 from dataclasses import dataclass
 from typing import List, Sequence, Tuple
@@ -224,6 +226,89 @@ def permutation_test(
         for value in differences:
             total += value if rng.random() < 0.5 else -value
         if abs(total / n) >= observed - 1e-12:
+            extreme += 1
+    return (extreme + 1) / float(resamples + 1)
+
+
+#: Number of distinct label assignments below which the two-sample test
+#: enumerates rather than samples. 200k assignments is a fraction of a second
+#: and removes the seed from the answer entirely.
+TWO_SAMPLE_EXACT_LIMIT = 200000
+
+
+def two_sample_permutation(
+    a: Sequence[float],
+    b: Sequence[float],
+    resamples: int = 20000,
+    seed: int = 0,
+    exact_limit: int = TWO_SAMPLE_EXACT_LIMIT,
+) -> float:
+    """Two-sided p-value for two *unpaired* groups differing in mean.
+
+    :func:`permutation_test` above is paired - it flips the sign of each
+    question's difference, because the same question was scored by both
+    systems. That is the right test for method-versus-method and the wrong one
+    for the comparison :mod:`ragkb.difficulty` needs to make, which is between
+    two disjoint sets of *different* questions of unequal size: do the 52
+    hand-labelled "hard" questions have lower containment than the 66
+    "easy" ones? There is no pairing to exploit, so the exchangeable thing
+    under the null is the **label**, not the sign.
+
+    So the null distribution is built by reshuffling which values are called
+    ``a`` and which ``b``, holding the group sizes fixed, and the p-value is the
+    share of relabellings whose absolute difference in means reaches the
+    observed one. Nothing is assumed about the shape of either distribution,
+    which matters because containment is a bounded ratio and visibly not
+    normal.
+
+    Two regimes, as in the paired test. Below ``exact_limit`` distinct
+    assignments every relabelling is enumerated and the p-value is exact and
+    seedless. Above it, ``resamples`` shuffles are drawn from ``seed``, and the
+    ``+1`` on both sides counts the observed labelling so the result is never
+    0.0 - the honest statement stays "below ``1/(resamples + 1)``".
+
+    Returns 1.0 when either group is empty: with nothing to compare there is no
+    evidence of a difference, which is a finding rather than an error.
+    """
+    if resamples <= 0:
+        raise ValueError("resamples must be positive")
+    if exact_limit < 0:
+        raise ValueError("exact_limit cannot be negative")
+    n_a, n_b = len(a), len(b)
+    if n_a == 0 or n_b == 0:
+        return 1.0
+
+    pooled = list(a) + list(b)
+    total = n_a + n_b
+    observed = abs(mean(a) - mean(b))
+    pooled_sum = sum(pooled)
+
+    def _difference(group_sum: float) -> float:
+        """|mean(a) - mean(b)| from the sum of the group assigned to ``a``."""
+        return abs(group_sum / n_a - (pooled_sum - group_sum) / n_b)
+
+    # >= with a tolerance throughout, so two groups with identical means return
+    # 1.0 rather than claiming significance off floating-point dust.
+    assignments = math.comb(total, n_a)
+    if assignments <= exact_limit:
+        extreme = 0
+        for indices in itertools.combinations(range(total), n_a):
+            group_sum = 0.0
+            for index in indices:
+                group_sum += pooled[index]
+            if _difference(group_sum) >= observed - 1e-12:
+                extreme += 1
+        return extreme / float(assignments)
+
+    rng = random.Random(seed)
+    shuffled = list(pooled)
+    extreme = 0
+    for _ in range(resamples):
+        rng.shuffle(shuffled)
+        group_sum = 0.0
+        for index in range(n_a):
+            group_sum += shuffled[index]
+        if _difference(group_sum) >= observed - 1e-12:
             extreme += 1
     return (extreme + 1) / float(resamples + 1)
 

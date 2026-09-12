@@ -89,7 +89,8 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `ragkb/metrics.py` | hit@k, recall@k, precision@k, nDCG@k, MRR |
 | `ragkb/perturb.py` | seeded, keyboard-aware query corruption plus the edit distance that measures it |
 | `ragkb/significance.py` | paired bootstrap intervals, randomization tests, and Holm familywise correction |
-| `ragkb/power.py` | exact sign-test power, required gold-set size, exact binomial intervals, and the paired McNemar test |
+| `ragkb/power.py` | exact sign-test power, required gold-set size, exact binomial intervals, the paired McNemar test, and Fisher's exact test |
+| `ragkb/difficulty.py` | measured question difficulty: query-document containment, IDF-weighted, and the bands the diagnostics stratify along |
 | `ragkb/cli.py` | `stats`, `search`, `ask`, `explain`, `index`, `--mmr`, `--expand`, `--rerank`, `--ngram`, `--abstain`, `--index` |
 | `evals/tune.py` | index-time sweep: chunk size, chunk overlap, `rrf_k` (2 or 3 lists) |
 | `evals/failures.py` | per-question failure analysis: where a missed document really ranks, and which lever recovers it |
@@ -97,10 +98,14 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
 | `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
 | `evals/corpus_lever.py` | which half of an increment moved the discordance rate: the new documents, or the new questions |
+| `evals/difficulty.py` | audits the hand-assigned `easy`/`hard` label against measured containment, then stratifies the ablation along the measured axis with question length as a negative control |
 
 `corpus/` holds the sample knowledge base (twenty-four documents on information
 retrieval). `evals/gold.jsonl` holds one hundred and eighteen labelled questions with
-the documents that answer them, split into an `easy` and a `hard` slice.
+the documents that answer them, split into an `easy` and a `hard` slice - a
+hand-assigned split, audited against a measured one in
+[Is the "hard slice" a real slice?](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas),
+which is also where the confound it turned out to carry is recorded.
 `evals/unanswerable.jsonl` holds twenty-two questions the corpus deliberately
 cannot answer, split into `off-domain` and `near-domain`, which is what the
 abstention gate is measured against.
@@ -112,6 +117,7 @@ python evals/evaluate.py     # ablation + query-time sweeps + the third retrieve
 python evals/significance.py # error bars: which of those differences are real
 python evals/power.py        # how many questions the differences would need to be real
 python evals/corpus_lever.py  # did the new documents or the new questions move the rate?
+python evals/difficulty.py   # is the hard slice a real slice? and where the n-gram gain lives
 python evals/holdout.py      # what each sweep's top row cost by picking itself
 python evals/tune.py         # index-time sweeps (chunk size, overlap, rrf_k)
 python evals/tune.py --ngram 4   # the same rrf_k sweep against three lists
@@ -135,12 +141,18 @@ Current numbers on the bundled corpus and gold set (24 documents, 116 chunks,
 > the failure mode this file exists to avoid; re-running them is the next
 > increment, not a silent edit.
 
-The gold set is split by difficulty. The `easy` slice is sixty
+The gold set is split by difficulty. The `easy` slice is sixty-six
 questions whose wording shares vocabulary with the target document. The `hard`
-slice is forty-six questions written to avoid the target document's own terms -
+slice is fifty-two questions written to avoid the target document's own terms -
 "if someone writes automobiles but the page only ever says cars" instead of
-"vocabulary mismatch" - and twenty-eight of them are answered by two documents
-rather than one.
+"vocabulary mismatch" - and thirty-one of them are answered by two documents
+rather than one. Those counts are no longer a description of intent:
+`evals/difficulty.py` confirms the split does separate on measured
+query-document overlap (0.614 against 0.327 IDF-weighted, p < 5e-05), and also
+that all thirty-one multi-document questions sit in the `hard` slice and none
+in `easy`, so the two axes coincide exactly and a hard-slice figure carries
+both. [The audit is
+here](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas).
 
 **easy (60 questions)**
 
@@ -1231,6 +1243,150 @@ joined it immediately at 0.38, wrongly answered at the shipped threshold, for
 exactly the same reason - every word in it is in the corpus and the fact it asks
 for is not.
 
+### Is the "hard slice" a real slice? Auditing the partition before the deltas
+
+Every table above this line that says *hard slice* is computed over the
+questions carrying `"difficulty": "hard"` in `evals/gold.jsonl` - the expansion
+sweep, the re-ranking sweep, the weighted-RRF table, `evals/holdout.py --slice
+hard`. That label was **assigned by hand, by the same person who wrote the
+corpus**, and nothing in the repo had ever checked whether it corresponds to a
+property of the question rather than to a mood on the afternoon it was typed. A
+partition carrying that much weight deserves the same treatment the next
+section gives the deltas.
+
+```bash
+python evals/difficulty.py
+python evals/difficulty.py --metric ndcg@5
+```
+
+`ragkb/difficulty.py` measures the one property the retrievers actually depend
+on: **containment**, the share of a question's distinct content terms that
+occur anywhere in its own relevant documents, weighted by BM25's own IDF so
+matching `okapi` counts for more than matching `parameter`. It is a ceiling
+diagnostic, not a score. A word index gives weight exactly zero to a term the
+answer does not contain, so containment bounds what lexical matching *can* do
+on a question - and it is precisely the quantity the character n-gram list was
+added to attack, which makes it the right axis to stratify that list's gain
+along.
+
+**The label survives.** Hand-`hard` questions really do have lower containment,
+and not marginally:
+
+| label | n | containment | idf-weighted | mean terms |
+| --- | --- | --- | --- | --- |
+| easy | 66 | 0.690 | 0.614 | 6.8 |
+| hard | 52 | 0.480 | 0.327 | 11.8 |
+
+A label-shuffle permutation test - unpaired, because these are two disjoint
+sets of different questions and there is nothing to pair - puts both columns
+below 5e-05 at 20000 resamples. That is a real vindication rather than a
+formality: the label could easily have been noise, and the honest thing was
+that nobody knew.
+
+**But it is not one axis.** Crosstabbed against the size of the answer key, the
+label turns out to be a proxy for it as much as for anything lexical:
+
+| label | multi-document | single-document |
+| --- | --- | --- |
+| hard | 31 | 21 |
+| easy | 0 | 66 |
+
+Fisher's exact test gives p = 7.1e-15, and the interesting cell is the zero:
+*every* multi-document question in the gold set is labelled hard, and no easy
+question has more than one relevant document. So a hard-slice number is not a
+lexical-difficulty number. It is a blend of a lexical effect and a
+"find-two-documents-instead-of-one" effect, and the two have to be separated
+before either can be quoted. Holding the answer-key size fixed separates them,
+and the spread it exposes is wide (hit@1, k=5):
+
+| slice | n | bm25 | hybrid2 | hybrid3 |
+| --- | --- | --- | --- | --- |
+| hand hard (all) | 52 | 0.519 | 0.558 | 0.712 |
+| hand hard, single-document | 21 | 0.333 | 0.333 | 0.571 |
+| hand hard, multi-document | 31 | 0.645 | 0.710 | 0.806 |
+
+The reported 0.519 is an average over two sub-populations that differ by 0.312
+- the single-document hard questions are nearly twice as hard as the
+multi-document ones the label groups them with. Nothing above this line is
+wrong because of that, but "the hard slice" has been doing duty as a single
+population and it is two.
+
+**The payoff: the third list's gain lands exactly where its mechanism says it
+must.** Stratifying along measured containment instead of the hand label, on
+single-document questions so the multi-document effect is held out (hit@1):
+
+| idf-containment | n | bm25 | hybrid2 | hybrid3 | hybrid3 - bm25 |
+| --- | --- | --- | --- | --- | --- |
+| [0.00, 0.35) | 24 | 0.250 | 0.250 | 0.500 | **+0.250** |
+| [0.35, 0.55) | 19 | 0.789 | 0.789 | 0.947 | **+0.158** |
+| [0.55, 0.75) | 24 | 1.000 | 1.000 | 1.000 | +0.000 |
+| [0.75, 1.00] | 20 | 0.850 | 0.850 | 0.850 | +0.000 |
+
+The gain declines across the range and reaches *exactly* zero in the top two
+bands. It is monotone at this cut, though that part does not survive a finer
+one and the third limit below is where it breaks - the concentration at low
+containment is the claim, not the monotonicity. That is the prediction the
+module was written to test and it could have failed: n-grams exist to match
+terms the word index scores at zero, so their
+value has to be concentrated where the question's words are missing from the
+answer and has to vanish where they are all present. An aggregate delta of
++0.119 over the whole gold set (+0.103 over the 87 single-document questions)
+says the third list helps. This says where it helps, why, and where it provably
+does nothing - and a flat profile would have meant that +0.119 was coming from
+somewhere other than the lexical gap the module claims.
+
+The `hybrid2` column is the same result from the other side, and it is blunter
+than the aggregate tables managed to be: fusing BM25 with TF-IDF buys **0.000
+in every single band**. The design note about two scores over one
+representation not being two retrievers stops being an argument at that point;
+the two lists share a tokenizer, so they share their containment blindness
+band for band.
+
+**The negative control, because a sceptic is owed it.** Hard questions are also
+*longer* questions here (11.8 terms against 6.8), and containment's denominator
+is the term count, so "long questions are hard" is a live rival explanation
+that would make containment a restatement of length. Stratifying the same
+questions by term count instead:
+
+| terms | n | bm25 | hybrid3 | hybrid3 - bm25 |
+| --- | --- | --- | --- | --- |
+| [0, 7) | 27 | 0.741 | 0.852 | +0.111 |
+| [7, 10) | 41 | 0.780 | 0.878 | +0.098 |
+| [10, 14) | 13 | 0.615 | 0.692 | +0.077 |
+| [14, inf) | 6 | 0.333 | 0.500 | +0.167 |
+
+Flat and non-monotone - it never reaches zero and it turns back up at the end.
+Length does not reproduce the profile, and length correlates with containment
+at only r = -0.386, so the two are not the same measurement. The rival
+hypothesis is the one that fails here, which is the only reason the containment
+table above is worth believing.
+
+Three limits, stated where they apply rather than at the end:
+
+- **Containment is not discriminativeness.** It measures whether the question's
+  terms are in its answer, not whether they are *only* there. A question whose
+  every term appears in its answer and in six other documents scores 1.000 and
+  is still a coin flip. The top band is where that shows: bm25 hit@1 falls from
+  1.000 to 0.850 going from the third band to the fourth, which is the proxy
+  failing, not the retriever.
+- **The bands hold 19-24 questions each.** At those counts one question is
+  worth 0.04-0.05, so the +0.250 and +0.158 are two-to-five-question effects
+  and the two zeros are the load-bearing entries - they are exact, not
+  rounded. Read the shape of the profile, not the digits.
+- **The band edges were fixed before any metric was computed**, at 0.35 / 0.55
+  / 0.75, to give comparable counts - but the profile is not indifferent to
+  them, and `--edges` is how that was found out. Re-cut at two bands (0.50),
+  three (0.30/0.60, 0.40/0.70) and the shipped four, the decline holds and the
+  top band stays at exactly +0.000 every time. Re-cut at **five**
+  (0.25/0.45/0.65/0.85) it breaks: the deltas run +0.333, +0.133, +0.042,
+  +0.045, **-0.125**, so the monotonicity fails twice over in the last two
+  bands. That top band holds 8 questions, where one row is worth 0.125 and the
+  -0.125 *is* one row. The defensible claim is therefore the weaker one - the
+  gain is concentrated at low containment and reaches zero by the top - and
+  **not** strict monotonicity, which is an artifact of a cut coarse enough to
+  hide the noise. Four bands over 87 questions was already the sweep most
+  likely to be fitting itself; this is it caught doing so.
+
 ### How much of any of that is real? Error bars on the ablation table
 
 Every table above this line reports a mean over the same 92 questions, and
@@ -2202,6 +2358,19 @@ parse.
   did not survive. The `stable` column, which fell 65% -> 0% over the same span,
   was the honest signal all along. The two knobs where nothing is being selected
   report ~0.000 at every corpus size, which is how the number earns belief.
+- **Audit the partition, not just the delta.** Error bars ask whether a
+  difference between two slices is real; they assume the slices are. The
+  `easy`/`hard` label underneath a dozen tables here was hand-assigned and
+  unexamined for the entire life of the project, and `ragkb/difficulty.py`
+  found it to be two things at once - a genuine lexical axis *and* a proxy for
+  how many documents answer the question, perfectly confounded at p = 7.1e-15.
+  The measured version earns its keep by predicting where a component's gain
+  must appear: the n-gram list's advantage concentrates at low query-document
+  containment and is exactly 0.000 where every query term is already in the
+  answer, which is a mechanism rather than an aggregate. And the honest test of
+  such a stratification is a rival one - question length, stratified the same
+  way, produces a flat non-monotone profile, which is the reason to believe
+  containment is measuring what it claims.
 - **A score you cannot decompose is a score you cannot debug.** Both retrievers
   and the fusion are additive, so `ragkb/attribution.py` reconstructs any
   single score from its summands exactly and the tests assert that identity.
@@ -2211,7 +2380,7 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 535 tests
+pytest -q      # 575 tests
 ```
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
@@ -2284,8 +2453,35 @@ test; the paired McNemar p-value against the hand-computed `2 ** (1 - d)` floor
 and a hand-summed tail; and the partition that decides which questions predate
 an increment - in particular that a question naming one old and one new document
 is *not* carried, since scoring it against a corpus missing half its answer key
-would charge the retriever for the setup), and an end-to-end pass over the real
-corpus and gold set.
+would charge the retriever for the setup), measured question difficulty (that
+containment is 1.0 when every query term is in the answer and 0.0 when none
+is, that it counts distinct terms so a repeated word cannot skew the ratio,
+that stopwords are excluded from both sides, that a multi-document answer is
+scored against the union, that the IDF weighting collapses onto the unweighted
+form when every term shares a document frequency, that an out-of-vocabulary
+query term counts *against* containment and outweighs a matched one - and the
+case the module exists to expose, that `saturate` against `saturates` is
+counted as missing, because a containment that silently credited morphological
+variants would be measuring a stemmer nobody wrote and would hide exactly the
+questions the n-gram list rescues; plus that the IDF is BM25's own, asserted
+term for term against a fitted `BM25Index` rather than trusted to a comment),
+the band arithmetic (half-open upwards at every edge, monotone, a genuine
+partition that keeps empty bands so a band emptying out is visible, and an
+open-ended top label when the banded quantity is a term count rather than a
+ratio), Fisher's exact test (the textbook tea-tasting table, a hand-computed
+2x0/0x2, invariance under all four table symmetries, 1.0 for a perfectly
+balanced table, agreement with a directly summed hypergeometric, and the
+perfect-separation shape the real audit finds), and the unpaired label-shuffle
+test (1.0 for identical and for constant groups, a hand-counted 2/20 for three
+against three perfectly separated, exactness and seed-independence below the
+enumeration limit, symmetry in its arguments, that it accepts the unequal group
+sizes a paired test cannot even be handed, and that the Monte-Carlo branch is
+reproducible and never returns 0.0), and an end-to-end pass over the real
+corpus and gold set - including the three properties the difficulty audit
+turns on, pinned so they cannot change silently: that hand-`hard` questions
+really do have lower measured containment, that no easy question is
+multi-document, and that the label's confound with answer-key size is still
+significant.
 
 One of those tests exists because a bug shipped into a draft: `--ngram` was
 first declared with argparse's `nargs="?"`, which quietly consumes the
