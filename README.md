@@ -99,6 +99,7 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
 | `evals/corpus_lever.py` | which half of an increment moved the discordance rate: the new documents, or the new questions |
 | `evals/difficulty.py` | audits the hand-assigned `easy`/`hard` label against measured containment, then stratifies the ablation along the measured axis with question length as a negative control |
+| `evals/diversity.py` | audits the MMR sweep: the selection-depth mismatch between its accuracy and diversity columns, and the recall it never reported, on the multi-document questions that are the only place recall differs from hit |
 
 `corpus/` holds the sample knowledge base (twenty-six documents on information
 retrieval). `evals/gold.jsonl` holds one hundred and thirty-two labelled questions with
@@ -886,14 +887,14 @@ python -m ragkb.cli --mmr 0.7 search "how does BM25 saturate term frequency"
 Sweeping lambda over all 132 questions at k=5 (`redundancy` is the mean
 pairwise cosine within a result set; `distinct` is how many documents it spans):
 
-| lambda | hit@1 | hit@5 | MRR | redundancy | distinct |
-| --- | --- | --- | --- | --- | --- |
-| off | 0.727 | 0.924 | 0.802 | 0.123 | 3.79 |
-| 1.0 | 0.727 | 0.924 | 0.802 | 0.123 | 3.79 |
-| 0.9 | 0.727 | 0.924 | 0.802 | 0.117 | 3.94 |
-| **0.7** | 0.727 | **0.932** | **0.803** | 0.098 | 4.35 |
-| 0.5 | 0.727 | 0.917 | 0.797 | 0.090 | 4.58 |
-| 0.3 | 0.727 | 0.871 | 0.787 | 0.082 | 4.74 |
+| lambda | hit@1 | hit@5 | recall@5 | MRR | redundancy | distinct |
+| --- | --- | --- | --- | --- | --- | --- |
+| off | 0.727 | 0.924 | 0.850 | 0.802 | 0.123 | 3.79 |
+| 1.0 | 0.727 | 0.924 | 0.850 | 0.802 | 0.123 | 3.79 |
+| 0.9 | 0.727 | 0.924 | 0.850 | 0.802 | 0.117 | 3.94 |
+| **0.7** | 0.727 | **0.932** | 0.850 | **0.803** | 0.098 | 4.35 |
+| 0.5 | 0.727 | 0.917 | 0.838 | 0.797 | 0.090 | 4.58 |
+| 0.3 | 0.727 | 0.871 | 0.793 | 0.787 | 0.082 | 4.74 |
 
 `lambda = 1.0` reproduces the unmodified ranking exactly, which is the cheapest
 available correctness check on the implementation. Hit@1 has now been flat
@@ -913,10 +914,19 @@ it.
 That reading should be held loosely. The hit@5 gain is 0.008 - **one question** -
 and the MRR gain is 0.001, which is the smallest non-zero this table can print.
 The defensible statement is that diversity re-ranking at 0.7 is free on this
-gold set and possibly very slightly positive, not that it helps. What makes the
-row interesting is not its size but its direction: every previous revision could
-only argue that MMR cost nothing, and this is the first measurement where the
-best accuracy row is also the diverse one.
+gold set and possibly very slightly positive, not that it helps.
+
+**The `recall@5` column is new, and it withdraws the "possibly very slightly
+positive" half of that sentence.** The column was always computed by
+`diversity_report` and discarded before printing, which mattered more than a
+dropped column normally would: the argument for diversity re-ranking at the top
+of this section is a *recall* argument - five paraphrases of one passage cannot
+hold the second document a two-document question needs - and recall@5 is the
+only metric here that can see it. Printed, it is flat at 0.850 from `off`
+through `lambda = 0.7` and falls below that. So the one question `lambda = 0.7`
+gained at hit@5 bought no recall, and the section
+[below](#the-column-the-diversity-argument-needed-and-the-two-settings-the-table-was-mixing)
+measures why: it was a win and an equal-sized loss cancelling exactly.
 
 That the optimum has moved at all across corpus sizes - 0.5 at fourteen
 documents, then four revisions of a flat band, now a peak at 0.7 - is the
@@ -926,6 +936,120 @@ stays **off by default** and the trade-off is a flag rather than a hidden number
 One caveat that the holdout section adds and this table cannot see: `off` wins
 here on the full gold set, but it is *not* what a cross-validated pick chooses on
 most splits, and that gap now costs 0.004 of nDCG@5. The sweep below prices it.
+
+### The column the diversity argument needed, and the two settings the table was mixing
+
+The table above scores a technique whose entire justification is about recall,
+using metrics that are structurally unable to see recall, at a selection depth
+where the technique barely runs. `evals/diversity.py` takes those three problems
+in order.
+
+```bash
+python evals/diversity.py
+python evals/diversity.py --lambdas 0.9,0.7,0.5 --slice all
+```
+
+**Averaging recall over the whole gold set mostly re-reports hit@5.** On a
+question with exactly one relevant document, recall@5 is 1.0 when that document
+is in the top five and 0.0 otherwise, which is the definition of hit@5 - the two
+columns are the *same number* on those questions. 95 of the 132 gold questions
+have one relevant document; the other 37 have two or three, and every one of
+them is in the hard slice. Those 37 are the entire independent content of the
+recall column, and the script checks the identity on all 95 rather than
+asserting it (`0 mismatches`) before restricting to them.
+
+**The accuracy columns and the diversity columns were never the same
+configuration.** MMR is greedy against a running redundancy penalty, so what it
+returns depends on how many items it is asked to select. `diversity_report`
+takes `hit@1`, `hit@5` and `MRR` from `ranked_doc_ids`, which searches at
+`k * 4 = 20` because it needs enough chunks left after deduplicating to
+documents; it takes `redundancy` and `distinct` from `search` at `k = 5`.
+Selecting 5 of 25 candidates is an aggressive diversity selection. Selecting 20
+of 25 can only drop five and is close to inert. Every row of the table above
+pairs one with the other:
+
+```
+selection depth audit (37 questions): where the diversification goes
+lambda      shallow_docs  shallow_redund       deep_docs       kept_docs           churn
+----------------------------------------------------------------------------------------
+off                3.892           0.117          12.703           5.000           0.000
+1.0                3.892           0.117          12.703           5.000           0.000
+0.9                4.000           0.111          12.865           5.000           0.000
+0.7                4.351           0.095          13.459           5.000           0.189
+0.5                4.676           0.088          13.730           5.000           0.324
+0.3                4.784           0.082          14.054           5.000           0.703
+```
+
+`kept_docs` is pinned at exactly 5.000 for every lambda, because truncating to
+the first five *distinct* documents always fills when the pool holds that many.
+No document-level metric in this README can see a change in how many documents a
+result set spans - that quantity is a constant by construction. `churn` is the
+guard against over-reading that: it counts how many of the five differ from the
+`off` list, and it is **0.000 at `lambda = 0.9`**. At that setting the printed
+`distinct` column moves from 3.79 to 3.94 while the list every accuracy column
+is computed from does not change by a single document. The two halves of that
+row describe different systems, and one of them is measuring a re-ranking that,
+as far as the evaluation is concerned, did not happen.
+
+**On the 37 questions where recall can move, it does not move up.**
+
+```
+recall@5 on the multi slice (37 questions), paired against lambda off
+lambda      recall    docs found      95% interval     W/L/T         p
+----------------------------------------------------------------------
+off          0.653         49/75       0.535-0.760    0/0/37     1.000
+1.0          0.653         49/75       0.535-0.760    0/0/37     1.000
+0.9          0.653         49/75       0.535-0.760    0/0/37     1.000
+0.7          0.653         49/75       0.535-0.760    1/1/35     1.000
+0.5          0.640         48/75       0.521-0.748    0/1/36     1.000
+0.3          0.586         44/75       0.467-0.699    0/5/32     0.062
+```
+
+`lambda = 1.0` reproducing `off` exactly is the correctness check, the same one
+the sweep above uses. Below it, the best case is a wash and the rest is cost.
+`lambda = 0.3` moves five questions and loses all five; p = 0.062 does not clear
+0.05, but five out of five in one direction is not an absence of evidence, it is
+a small sample pointing one way.
+
+**The `lambda = 0.7` row is the whole argument for printing recall, and it is
+worth naming the two questions.** Its W/L/T is 1/1, and both movers are
+two-document hard questions that move by exactly 0.5, which is why the mean is
+bit-identical to `off` rather than merely rounding to it:
+
+| question | relevant | `off` | `0.7` | what changed |
+| --- | --- | --- | --- | --- |
+| h51 | relevance-feedback, query-performance-prediction | 0.000 | 0.500 | `relevance-feedback` displaced `sparse-neural-retrieval` at rank 5 |
+| h47 | score-normalisation, rank-fusion | 1.000 | 0.500 | `rank-fusion` dropped out of the top five, `citations` entered at rank 5 |
+
+h51 is exactly the win the diversity argument predicts: the ranking was five
+documents deep into one neighbourhood, and spreading it out reached a second
+relevant document. h47 is exactly the loss that argument does not mention:
+spreading out pushed a relevant document off the end.
+
+**hit@5 counted the win and was incapable of counting the loss.** h51 went from
+zero relevant documents to one, so its hit@5 went 0 to 1. h47 went from two
+relevant documents to one - and its hit@5 stayed at 1, because hit@k stops
+looking after the first. That single question is the entire `0.932` against
+`0.924` that made `lambda = 0.7` "the best row in the table". The row was not
+better; it was measured with an instrument that sees diversity's benefit and is
+blind to its cost by construction.
+
+So the narrower and defensible claim, replacing "free and possibly very slightly
+positive": **on this gold set MMR does not improve document-level retrieval at
+any lambda, it is free at 0.7 and costly below, and the earlier positive reading
+was an artefact of the metric.** It keeps the case it always had - redundancy
+down 20%, the top-5 chunks spanning 15% more documents at 0.7, both of which
+matter to an answerer reading the passages - and that case is now separated from
+a retrieval claim it never supported. Re-ranking stays **off by default**, and
+the reason is now measured rather than inherited.
+
+Two limits worth stating. `churn` counts document identity, so a re-ranking that
+reorders the same five documents registers as 0.000 and MRR is the column that
+would catch it; and 37 questions with 75 relevant documents between them is a
+small slice - the Clopper-Pearson interval on `off` alone spans 0.535 to 0.760,
+which is most of the range the rate could take. This section establishes that
+the earlier positive reading does not hold, not that a better-targeted diversity
+method could not.
 
 ### Failure analysis: which misses, and what would fix them
 

@@ -225,7 +225,24 @@ def agreement(engine: RAGEngine, gold: Sequence[Dict], k: int) -> Dict[str, floa
 def diversity_report(
     engine: RAGEngine, gold: Sequence[Dict], k: int, mmr_lambda
 ) -> Dict[str, float]:
-    """Accuracy plus redundancy for one MMR setting, over the whole gold set."""
+    """Accuracy plus redundancy for one MMR setting, over the whole gold set.
+
+    ``recall@k`` is here because the argument for diversity re-ranking is a
+    recall argument - five paraphrases of one passage cannot hold the second
+    document a two-document question needs - and this table omitted the one
+    metric that can see it for several revisions while printing four that
+    cannot. It is reported over the whole gold set for consistency with the
+    columns beside it, which makes it a *blunt* read: on a question with one
+    relevant document recall@k is identical to hit@k by definition, so most of
+    this column is hit@k wearing a different name.
+
+    Two caveats this table cannot carry, both measured in ``evals/diversity.py``:
+    the accuracy columns come from ``ranked_doc_ids`` (which searches at
+    ``k * 4``) while ``redundancy`` and ``distinct_docs`` come from ``search``
+    at ``k``, so the two halves of a row are different MMR configurations; and
+    the truncation to ``k`` documents pins the document count the accuracy
+    columns see, so they are close to blind to diversification by construction.
+    """
     rankings, redundancies, distinct = [], [], []
     for record in gold:
         results = engine.search(record["question"], k=k, mmr_lambda=mmr_lambda)
@@ -241,6 +258,7 @@ def diversity_report(
     return {
         "hit@1": report["hit@1"],
         "hit@{}".format(k): report["hit@{}".format(k)],
+        "recall@{}".format(k): report["recall@{}".format(k)],
         "mrr": report["mrr"],
         "redundancy": mean(redundancies),
         "distinct_docs": mean([float(value) for value in distinct]),
@@ -530,6 +548,14 @@ def main(argv=None) -> int:
             "\nMMR diversity re-ranking (hybrid, k={})".format(args.k)
         )
         print(format_sweep_table(rows))
+        print(
+            "recall@{k} is near-flat here by construction: it equals hit@{k} on every\n"
+            "single-document question, so only the multi-document ones move it.\n"
+            "run `python evals/diversity.py` for that slice on its own, and for why\n"
+            "the accuracy and diversity columns above are not the same MMR setting.".format(
+                k=args.k
+            )
+        )
 
     failures = [
         record["id"]
