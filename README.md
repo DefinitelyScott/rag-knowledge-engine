@@ -101,6 +101,7 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/holdout.py` | nested cross-validation over four sweeps - three query-time knobs and, since this increment, index-time chunking - pricing what each sweep's top row cost by picking itself |
 | `evals/difficulty.py` | audits the hand-assigned `easy`/`hard` label against measured containment, then stratifies the ablation along the measured axis with question length as a negative control |
 | `evals/diversity.py` | audits the MMR sweep: the selection-depth mismatch between its accuracy and diversity columns, and the recall it never reported, on the multi-document questions that are the only place recall differs from hit |
+| `evals/arbitration.py` | audits the ablation table: how often the fused ranking differs from the lists it fuses, and what the difference bought - which separates a fusion that had nothing to do from one whose wins and losses cancelled |
 
 `corpus/` holds the sample knowledge base (twenty-six documents on information
 retrieval). `evals/gold.jsonl` holds one hundred and thirty-two labelled questions with
@@ -117,6 +118,7 @@ abstention gate is measured against.
 ```bash
 python evals/evaluate.py     # ablation + query-time sweeps + the third retriever
 python evals/significance.py # error bars: which of those differences are real
+python evals/arbitration.py  # did the fusion reorder anything, and did the reordering pay?
 python evals/power.py        # how many questions the differences would need to be real
 python evals/corpus_lever.py  # did the new documents or the new questions move the rate?
 python evals/difficulty.py   # is the hard slice a real slice? and where the n-gram gain lives
@@ -147,7 +149,19 @@ Current numbers on the bundled corpus and gold set (26 documents, 126 chunks,
 > persistence remain at the twenty-document, ninety-two-question figures, and
 > the expansion and re-ranking sweeps remain at ninety-two.
 >
-> **This increment adds a row rather than refreshing one.** `evals/holdout.py`
+> **This increment adds a measurement rather than refreshing one, and it
+> reinterprets a table that was already current.** `evals/arbitration.py` asks
+> whether the fused ranking differs from the lists it fuses. The ablation
+> table's headline tie between the two-list fusion and TF-IDF turns out not to
+> mean what it reads like: the fusion reorders 97 of 132 questions and the
+> reorderings cancel, which is a different claim from "there was nothing to
+> arbitrate" and implies a different repair. Nothing in the ablation numbers
+> changed; what changed is what they can be read to support. Measured at
+> twenty-six documents and 132 questions. It also corrects a small overstatement
+> in that section's prose, which said the fusion and TF-IDF were identical on
+> all six columns when hit@3 separates them by 0.007.
+>
+> **An earlier increment added a row rather than refreshing one.** `evals/holdout.py`
 > now cross-validates the index-time chunking sweep alongside its three
 > query-time knobs, which closes the gap the tuning section had been flagging
 > for six corpus sizes: the chunking table was the only sweep in this repo
@@ -235,8 +249,14 @@ called it "the result the project was built to look for". At twenty-six
 documents the hard slice belongs to **plain TF-IDF**, which takes hit@1, hit@5,
 recall@5, nDCG@5 and MRR outright while BM25 takes hit@3 and the fusion takes
 nothing at all. On the all slice the fusion and TF-IDF are identical to three
-decimals on all six columns. The lead did not shrink; it inverted, and it has
-now stayed inverted across three corpus sizes.
+decimals on five of the six columns - hit@3 is the only one that separates
+them, and it separates them by 0.007. The lead did not shrink; it inverted, and
+it has now stayed inverted across three corpus sizes.
+
+That row of identical numbers is not the same fact as "the fusion did nothing",
+and the table cannot tell the two apart. [It reorders 73% of the gold
+set](#the-tie-that-is-not-inertness-what-the-fusion-actually-reordered) and the
+reorderings cancel.
 
 Nothing in the retriever changed across those tables. What changed is that the
 questions deciding the result were replaced by more questions, and the
@@ -296,6 +316,111 @@ setting, landing at rank 4. At twenty, expansion does not change h18's top-5 at
 all. The lever never broke; its operating point moves with the feedback pool.
 h15 stays pinned because it is the one case that has held at every corpus size
 so far.
+
+### The tie that is not inertness: what the fusion actually reordered
+
+The ablation table above prints the two-list fusion and plain TF-IDF as the
+same numbers on five of six columns. There are two readings of that, they are
+opposites, and the table is silent between them:
+
+* **Inertness.** RRF handed back the TF-IDF list. The inputs agreed, or one
+  dominated, and there was nothing to arbitrate.
+* **Cancellation.** RRF handed back a *different* list on most questions, and
+  the questions it improved balanced the ones it damaged.
+
+This is not a distinction without a difference. Each reading implies a
+different repair. If the fusion is inert, it needs inputs that disagree - which
+is precisely the argument [the third
+retriever](#a-third-retriever-character-n-grams-and-what-it-cost-the-thesis)
+makes, and this repo acted on that reading. If the fusion is arbitrating
+constantly and netting to zero, more disagreement buys nothing on its own,
+because the problem is not a shortage of opinions but the absence of any reason
+to prefer one on a given query - a weighting problem, not a coverage one.
+
+`agreement()` in `evals/evaluate.py` is the nearest existing measurement, and it
+answers the other question: how much the fused lists overlap **with each
+other**. That is a property of the inputs. Whether the *output* departs from
+them was never measured. `evals/arbitration.py` measures it, on the
+deduplicated document ranking that the metrics actually score.
+
+**Reordering rate against each input (132 questions, k=5)**
+
+| fusion | input | same order | same set, reordered | different set | acted on |
+| --- | --- | --- | --- | --- | --- |
+| hybrid2 | bm25 | 36 (0.273) | 53 (0.402) | 43 (0.326) | **96 (0.727)** |
+| hybrid2 | vector | 35 (0.265) | 48 (0.364) | 49 (0.371) | **97 (0.735)** |
+| hybrid3 | bm25 | 4 (0.030) | 33 (0.250) | 95 (0.720) | **128 (0.970)** |
+| hybrid3 | vector | 12 (0.091) | 42 (0.318) | 78 (0.591) | **120 (0.909)** |
+| hybrid3 | ngram | 7 (0.053) | 13 (0.098) | 112 (0.848) | **125 (0.947)** |
+
+**The inertness reading is false.** The two-list fusion returns TF-IDF's exact
+ranking on 35 of 132 questions and departs from it on the other 97. It was
+never idle. The tie in the ablation table is a cancellation, and the
+decomposition says so arithmetically: a question where the fused ranking equals
+the input's contributes exactly zero to the aggregate delta, so
+
+    mean delta over all  =  (acted / n)  x  mean delta over acted
+
+and the script checks that identity numerically on every row rather than
+asserting it.
+
+**What the reordering bought (hybrid2 vs vector)**
+
+| metric | hybrid2 | vector | delta | acted | on acted | W/L/T | 95% CI (acted) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| hit@1 | 0.727 | 0.727 | +0.0000 | 97 | +0.0000 | 2/2/93 | [-0.041, +0.041] |
+| hit@5 | 0.924 | 0.924 | +0.0000 | 97 | +0.0000 | 1/1/95 | [-0.031, +0.031] |
+| recall@5 | 0.850 | 0.850 | +0.0000 | 97 | +0.0000 | 1/2/94 | [-0.021, +0.026] |
+| nDCG@5 | 0.777 | 0.777 | +0.0000 | 97 | +0.0000 | 12/9/76 | [-0.017, +0.018] |
+| MRR | 0.802 | 0.802 | -0.0003 | 97 | -0.0003 | 8/6/83 | [-0.024, +0.023] |
+
+Ninety-seven reorderings and a net of zero to four decimal places on four of
+five metrics. On nDCG@5 the fusion moved twenty-one questions off the TF-IDF
+score and won twelve of them - a 12/9 split, which is what a fair coin looks
+like. Against BM25 the same shape holds: 96 reordered, 9W/9L on nDCG@5, net
++0.0045, every interval spanning zero. This is the mechanism behind the
+[significance section's](#how-much-of-any-of-that-is-real-error-bars-on-the-ablation-table)
+NOT SHOWN on that pair, and it is a more specific statement than the p-value
+is: the fusion is not failing to act, it is acting at random with respect to
+relevance.
+
+The `T` column is worth reading separately from a tie in the ablation table.
+`12/9/76` means the fusion reordered 97 questions, 21 of them changed the
+nDCG@5 score, and **76 reorderings were invisible to the metric** - it moved
+documents around below the position the metric cared about. Set-only metrics
+show this most starkly: hit@5 and recall@5 cannot see a same-set reordering at
+all, which is why their `T` counts sit at 95 and 94.
+
+**The third list is the case where reordering does pay.** Against BM25,
+`hybrid3` reorders 128 of 132 and returns +0.039 nDCG@5 with a 21W/2L split and
+a confidence interval of [+0.020, +0.063] that excludes zero; against TF-IDF,
++0.035 at 27W/3L, [+0.021, +0.057]. Same instrument, same gold set, and the
+contrast with the two-list rows above is the clearest statement of what the
+third list bought that the second one did not.
+
+**And it is also the case where reordering costs.** Against the standalone
+n-gram list, `hybrid3` reorders 125 of 132 and *loses*: recall@5 -0.042 at
+2W/10L with [-0.080, -0.012], hit@5 -0.030 at 0W/4L with [-0.064, -0.008], both
+excluding zero. The `ngram only` control in `evaluate.py` already reported that
+the third list alone beats the fusion containing it. This says how: fusion is
+not diluting by failing to act, it is actively reordering the n-gram list on 95%
+of questions and the reordering is worse than leaving it alone.
+
+One number sets a ceiling on all of this. A fused top-5 holding a document that
+appeared in **no** input's top-5 is the only outcome no single list could have
+produced, and for the two-list fusion it happens on **2 of 132 questions
+(1.5%)**. Nearly everything the two-list fusion does is a permutation of
+documents TF-IDF and BM25 had already surfaced. The three-list fusion reaches
+20 of 132 (15.2%), ten times as often - which is the same finding as the
+reordering table, arrived at from the membership side rather than the order
+side.
+
+A caution the script prints and this section should repeat: a high reordering
+rate is not a quality score. A fusion that reorders every question and nets to
+zero is *worse* than an inert one, because it pays for the work and gets
+nothing. The rate is diagnostic. What makes it worth measuring is that the
+ablation table prints the same tie whether the rate is 0% or 73%, and those are
+different systems.
 
 ### Tuning the constants: chunk size, overlap, and `rrf_k`
 
@@ -644,9 +769,12 @@ words, and both are therefore blind to exactly the same things - `quantise` and
 `quantisation` are unrelated symbols to either of them, so is `reranking`
 against `re-ranking`, and one transposed letter is a total miss. Fusing two
 retrievers that share a blind spot cannot see into it, which is the structural
-reason the `rrf_k` sweep found nothing to tune: the two lists agree on 0.861 of
+reason the `rrf_k` sweep found nothing to tune: the two lists agree on 0.838 of
 their top-5 by chunk, and a fusion constant has no room to arbitrate lists that
-already concur.
+already concur. (That sentence is measured in set overlap, which cannot see the
+one thing RRF reads. It is re-measured in rank agreement below, where the
+direction survives and the magnitude roughly halves - see
+[The unit that claim was measured in cannot see order](#the-unit-that-claim-was-measured-in-cannot-see-order).)
 
 `ragkb/ngram.py` changes the representation instead of the score. Each token is
 padded with `_` boundary markers and cut into overlapping character 4-grams, so
@@ -885,6 +1013,89 @@ largest values still change orderings rather than none - 9 here, against 3 at
 twenty-four documents - because on a few questions the ranks are far enough
 apart for the Borda limit to differ from the default, and adding documents adds
 such questions.
+
+### The unit that claim was measured in cannot see order
+
+Both arguments above rest on one number, and it is the wrong kind of number.
+
+"The two lists agree on 0.838 of their top-5 by chunk, and a fusion constant has
+no room to arbitrate lists that already concur" is a statement about **sets**.
+RRF is a function of **rank**: `1 / (rrf_k + rank)` reads position and nothing
+else. Two lists holding the same five chunks in opposite order have a set
+overlap of 1.000 and produce different fused scores, different hit@1, different
+MRR and different nDCG@5. Every accuracy column in this README except recall@5
+is order-sensitive. The one statistic used to explain them is not.
+
+`ragkb/rankagree.py` adds the order-aware measurements and keeps the set one
+beside them, so the claim can be restated rather than assumed:
+
+```bash
+python evals/rank_agreement.py
+```
+
+**all 132 questions, k=5, RBO p=0.8**
+
+| pair | set overlap | RBO | tau_b | tau n | conjoint | same top-1 | identical |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| bm25 vs vector | 0.838 | 0.577 | 0.752 | 132 | 4.19 | 0.894 | **0.068** |
+| bm25 vs ngram | 0.533 | 0.410 | 0.506 | 112 | 2.67 | 0.689 | 0.000 |
+| vector vs ngram | 0.573 | 0.426 | 0.557 | 117 | 2.86 | 0.727 | 0.000 |
+
+**BM25 and TF-IDF return the same five chunks in the same order on 9 of 132
+questions.** The number the concurrence argument was built on is 0.838. The
+number a rank-based fusion actually experiences is 0.068. Both are correct
+measurements of the same pair of lists, and a reader given only the first would
+form a badly wrong picture of what RRF is being handed.
+
+Three measures because they fail differently. Kendall tau-b is the textbook
+answer and the worst choice here: it is defined only over items *both* lists
+retrieved, and that conjoint set averages 4.19 items for BM25-against-TF-IDF but
+2.67 for the cross-representation pairs - where two shared items can only score
++1 or -1. Tau is least trustworthy exactly where the interesting comparison is,
+which is why `conjoint` and `tau n` sit beside it in the table rather than in a
+footnote. Rank-biased overlap (Webber, Moffat & Zobel, TOIS 2010) is built for
+truncated non-conjoint lists: it sums overlap at every depth under a geometric
+weight, so an item at rank 1 in one list and rank 5 in the other is partially
+credited instead of discarded, and disagreement near the top costs more than
+disagreement at the bottom. `p = 0.8` is not a free parameter - RBO's expected
+viewing depth is `1/(1-p)`, so 0.8 is the value that matches this project's
+`k = 5`. It leaves a residual of `0.8**5 = 0.328`, reported rather than
+extrapolated away, because comparing five-item prefixes genuinely does leave
+that much unknown.
+
+**The comparative claim survives; its magnitude does not.** BM25 and TF-IDF do
+concur more than either concurs with the n-gram list, in all three units - so
+the reason given for adding a third representation was sound. But the size of
+the gap depends heavily on which unit you read it in. In set overlap the
+within-representation pair leads the cross-representation pairs by 0.285. In RBO
+that lead is 0.159, and in tau_b 0.220. Set overlap roughly doubles the apparent
+separation, and it is the one every earlier revision quoted.
+
+**And the mechanism holds - tested where it could have failed.** The claim is
+not only that the lists concur, it is that concurrence is *why* `rrf_k` has
+nothing to arbitrate. That is falsifiable: the questions where `rrf_k` does move
+the fused ordering should be the questions whose input lists agreed least. If
+the two groups had the same rank agreement, the concurrence story would be a
+coincidence and the real cause something else.
+
+| lists | changed by rrf_k | RBO on changed | RBO on unchanged | delta | p |
+| --- | --- | --- | --- | --- | --- |
+| two | 14/132 | 0.467 | 0.590 | **+0.123** | 0.0001 |
+| three | 81/132 | 0.443 | 0.516 | **+0.073** | 0.0001 |
+
+The prediction holds in both configurations and in the right direction, by an
+unpaired two-sided permutation test over disjoint groups of very unequal size
+(14 against 118). `rrf_k` moves precisely the questions where the lists disagree
+about order, which is the mechanism stated properly - and the delta shrinking
+from 0.123 to 0.073 when the third list joins is consistent with it, since a
+genuinely different list creates order disagreement on questions that used to
+have none.
+
+The honest summary: the conclusion in the two sections above was right, the
+evidence offered for it was in the wrong unit, and restating it in the right one
+both confirms the direction and cuts the effect size roughly in half. That is a
+better outcome than the alternative, and it is only visible because the claim
+was specific enough to re-measure.
 
 ### Diversity: MMR re-ranking
 
