@@ -7,13 +7,26 @@ scored on. The maximum of several noisy estimates is biased upward even when
 every configuration is identical, so "the best `rrf_k` scored 0.83" is not a
 prediction about the next 78 questions.
 
-This script re-runs three query-time sweeps under nested cross-validation
+This script re-runs four sweeps under nested cross-validation
 (:mod:`ragkb.holdout`): for each fold, pick the winner on the other folds, then
-score that choice on the held-out questions. Three sweeps, because they differ in
+score that choice on the held-out questions. Four sweeps, because they differ in
 the one respect that matters here - `rrf_k` is known to be nearly inert, the
-fusion weights visibly move the ranking, and MMR trades one metric for another -
-and a bias-measuring harness that only ever sees one kind of sweep proves
-nothing.
+fusion weights visibly move the ranking, MMR trades one metric for another, and
+chunking rebuilds the index outright - and a bias-measuring harness that only
+ever sees one kind of sweep proves nothing.
+
+The fourth is new and is the reason the others were not enough. The first three
+are *query-time*: one fitted engine serves every configuration, because the knob
+only re-scores or re-orders lists that already exist. Chunking is *index-time* -
+changing it changes what a document is cut into - so every configuration needs
+its own engine, and `evals/tune.py`'s chunking table was for that reason the one
+sweep in this repo with an in-sample winner and no out-of-sample estimate at all.
+Nothing in :mod:`ragkb.holdout` had to change to fix that: it consumes
+``config -> per-question scores`` and is indifferent to whether producing those
+scores cost a re-fusion or a rebuild. The limitation was in this script, which
+held one engine. On this corpus the ten rebuilds cost about half a second, so
+the exclusion was a guess about cost rather than a measurement of it, and the
+sweep runs by default. Pass ``--no-chunking`` to skip it.
 
 Each row reports:
 
@@ -30,6 +43,8 @@ Usage:
     python evals/holdout.py
     python evals/holdout.py --metrics ndcg@5 --folds 10 --repeats 50
     python evals/holdout.py --slice hard --seed 7
+    python evals/holdout.py --no-chunking          # query-time knobs only
+    python evals/holdout.py --chunk-specs 120:0,120:30,120:60
 """
 
 from __future__ import annotations
@@ -42,7 +57,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ragkb.engine import EngineConfig, RAGEngine  # noqa: E402
+from ragkb.engine import EngineConfig, RAGEngine, read_corpus  # noqa: E402
 from ragkb.holdout import repeated_selection, summarize  # noqa: E402
 from ragkb.metrics import (  # noqa: E402
     hit_at_k,
@@ -52,6 +67,7 @@ from ragkb.metrics import (  # noqa: E402
     reciprocal_rank,
 )
 from ragkb.significance import resolution  # noqa: E402
+from ragkb.text import parse_chunk_specs  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -68,6 +84,11 @@ DEFAULT_METRICS = "hit@1,ndcg@5,mrr"
 #: The n for the character n-gram index used by the fusion-weight sweep. The
 #: weights only have something to arbitrate once a third list exists.
 NGRAM_N = 4
+
+#: The chunking settings the index-time sweep offers, matching the rows of
+#: `evals/tune.py`'s chunking table so the in-sample column here reproduces the
+#: one printed there rather than describing a different set of configurations.
+DEFAULT_CHUNK_SPECS = "60:15,80:20,100:25,120:0,120:15,120:30,120:60,150:40,180:45,200:50"
 
 
 def metric_value(name: str, ranked: Sequence[str], relevant: Sequence[str]) -> float:
@@ -149,6 +170,45 @@ def mmr_sweep(engine: RAGEngine, lambdas: Sequence[float]) -> Sweep:
         return engine.ranked_doc_ids(question, k=k, method="hybrid", mmr_lambda=lam)
 
     return ("mmr lambda", "off", labels, rank)
+
+
+def chunking_sweep(
+    documents: Dict[str, str], specs: Sequence[Tuple[int, int]]
+) -> Sweep:
+    """Chunk size and overlap: the one index-time knob in this harness.
+
+    Unlike the three sweeps above, a configuration here is not a different way
+    of reading one index - it is a different index. Each spec therefore gets its
+    own :class:`~ragkb.engine.RAGEngine`, built eagerly so the per-question
+    ranking loop below costs the same as every other sweep's and the rebuilds
+    are not silently charged to whichever fold happens to run first.
+
+    The shipped default is inserted at the head of the offer order even when the
+    caller did not list it, for two reasons. It is the baseline ``vs default``
+    is measured against, so omitting it would leave that column undefined; and
+    offer order is what :func:`ragkb.holdout.cross_validated_selection` breaks
+    ties on, so the default going first makes an exact tie resolve to "no reason
+    to move" rather than to whichever spec the caller happened to type first.
+    That matters here in practice rather than in principle: on the current gold
+    set ``80:20`` and ``120:15`` tie exactly on in-sample hit@1.
+    """
+    default = (EngineConfig.target_tokens, EngineConfig.overlap_tokens)
+    ordered = [default] + [spec for spec in specs if spec != default]
+
+    engines: Dict[str, RAGEngine] = {}
+    labels: List[str] = []
+    for target, overlap in ordered:
+        label = "{}:{}".format(target, overlap)
+        engines[label] = RAGEngine(
+            documents,
+            config=EngineConfig(target_tokens=target, overlap_tokens=overlap),
+        )
+        labels.append(label)
+
+    def rank(label: str, question: str, k: int) -> List[str]:
+        return engines[label].ranked_doc_ids(question, k=k, method="hybrid")
+
+    return ("chunking", labels[0], labels, rank)
 
 
 def score_sweep(
@@ -238,6 +298,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--fusion-weights", default="ngram=1.5;ngram=2;ngram=3;ngram=4;ngram=6"
     )
     parser.add_argument("--mmr-lambdas", default="0.9,0.7,0.5,0.3")
+    parser.add_argument(
+        "--chunk-specs",
+        default=DEFAULT_CHUNK_SPECS,
+        help="comma-separated target:overlap settings for the index-time sweep",
+    )
+    parser.add_argument(
+        "--no-chunking",
+        action="store_true",
+        help="skip the index-time sweep (it rebuilds one index per setting)",
+    )
     args = parser.parse_args(argv)
 
     metrics = [name.strip() for name in args.metrics.split(",") if name.strip()]
@@ -248,8 +318,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not gold:
         raise SystemExit("no questions in slice {!r}".format(args.slice))
 
-    base = RAGEngine.from_corpus(args.corpus)
-    three = RAGEngine.from_corpus(args.corpus, config=EngineConfig(ngram=NGRAM_N))
+    documents = read_corpus(args.corpus)
+    base = RAGEngine(documents)
+    three = RAGEngine(documents, config=EngineConfig(ngram=NGRAM_N))
 
     sweeps = [
         rrf_k_sweep(base, [int(v) for v in args.rrf_ks.split(",") if v.strip()]),
@@ -258,6 +329,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             base, [float(v) for v in args.mmr_lambdas.split(",") if v.strip()]
         ),
     ]
+    if not args.no_chunking:
+        sweeps.append(chunking_sweep(documents, parse_chunk_specs(args.chunk_specs)))
 
     print(
         "{} questions ({} slice), k={}, {}-fold x {} splits, seed {}".format(
@@ -298,8 +371,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 (sweep_name, metric, results[0].in_sample_argbest, summary)
             )
         print(
-            "\n{}: {} configurations, default {!r}".format(
-                sweep_name, len(labels), default_label
+            "\n{}: {} configurations, default {!r}{}".format(
+                sweep_name,
+                len(labels),
+                default_label,
+                " (index rebuilt per configuration)"
+                if sweep_name == "chunking"
+                else "",
             )
         )
     print()
@@ -322,6 +400,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "winner changes\nwith the split, the sweep table's ordering is a property "
         "of these questions, not of\nthe configurations."
     )
+    if not args.no_chunking:
+        print(
+            "`chunking` is the only index-time sweep here: its configurations are "
+            "different\nindexes rather than different readings of one, which is why "
+            "it was left out until\nnow and why its optimism is worth comparing "
+            "against the query-time rows above."
+        )
     return 0
 
 

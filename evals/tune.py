@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ragkb.engine import EngineConfig, RAGEngine  # noqa: E402
 from ragkb.metrics import aggregate  # noqa: E402
+from ragkb.text import parse_chunk_specs  # noqa: E402,F401  (re-exported)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -71,30 +72,6 @@ def load_gold(path: str) -> List[Dict]:
     if not records:
         raise ValueError("gold set is empty: {}".format(path))
     return records
-
-
-def parse_chunk_specs(text: str) -> List[Tuple[int, int]]:
-    """Parse ``"target:overlap,target:overlap"`` into chunking settings.
-
-    An overlap at least as large as the target would make the chunker either
-    loop or emit chunks that are pure repetition, so it is rejected here rather
-    than deep inside the sweep.
-    """
-    specs: List[Tuple[int, int]] = []
-    for item in text.split(","):
-        item = item.strip()
-        if not item:
-            continue
-        target, _, overlap = item.partition(":")
-        pair = (int(target), int(overlap) if overlap else 0)
-        if pair[0] <= 0:
-            raise ValueError("target tokens must be positive: {}".format(item))
-        if pair[1] < 0 or pair[1] >= pair[0]:
-            raise ValueError(
-                "overlap must be in [0, target): {}".format(item)
-            )
-        specs.append(pair)
-    return specs
 
 
 def score(

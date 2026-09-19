@@ -98,6 +98,7 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
 | `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
 | `evals/corpus_lever.py` | which half of an increment moved the discordance rate: the new documents, or the new questions |
+| `evals/holdout.py` | nested cross-validation over four sweeps - three query-time knobs and, since this increment, index-time chunking - pricing what each sweep's top row cost by picking itself |
 | `evals/difficulty.py` | audits the hand-assigned `easy`/`hard` label against measured containment, then stratifies the ablation along the measured axis with question length as a negative control |
 | `evals/diversity.py` | audits the MMR sweep: the selection-depth mismatch between its accuracy and diversity columns, and the recall it never reported, on the multi-document questions that are the only place recall differs from hit |
 
@@ -120,6 +121,7 @@ python evals/power.py        # how many questions the differences would need to 
 python evals/corpus_lever.py  # did the new documents or the new questions move the rate?
 python evals/difficulty.py   # is the hard slice a real slice? and where the n-gram gain lives
 python evals/holdout.py      # what each sweep's top row cost by picking itself
+python evals/holdout.py --no-chunking   # the same, query-time knobs only
 python evals/tune.py         # index-time sweeps (chunk size, overlap, rrf_k)
 python evals/tune.py --ngram 4   # the same rrf_k sweep against three lists
 python evals/faithfulness_eval.py  # is the answer inside the passages it cites?
@@ -144,6 +146,15 @@ Current numbers on the bundled corpus and gold set (26 documents, 126 chunks,
 > **Still stale, and marked at the point of use:** latency, robustness and
 > persistence remain at the twenty-document, ninety-two-question figures, and
 > the expansion and re-ranking sweeps remain at ninety-two.
+>
+> **This increment adds a row rather than refreshing one.** `evals/holdout.py`
+> now cross-validates the index-time chunking sweep alongside its three
+> query-time knobs, which closes the gap the tuning section had been flagging
+> for six corpus sizes: the chunking table was the only sweep in this repo
+> whose winner had an in-sample margin and no out-of-sample estimate. It has
+> one now, and it is negative on all three metrics - the sweep loses to its own
+> default. Both affected sections are recomputed at twenty-six documents and
+> 132 questions.
 >
 > **One correction that the stale markers could not have caught.** The
 > significance section carried two mutually contradictory counts of how many
@@ -378,15 +389,24 @@ reads as a forecast rather than a caveat.
 `120:60` was never adopted, for two reasons worth separating. The weak one is
 bookkeeping: every other table in this README was measured at 120:30, so moving
 the default would invalidate them all in one edit. The real one is that this is
-exactly the pick the holdout section prices, and it prices it as the most
-expensive kind - the chunking sweep is not among the three knobs `holdout.py`
-cross-validates, because each row is a full index rebuild, so `120:60` had an
-in-sample margin and *no* out-of-sample estimate at all. A four-question lead
-chosen by looking at the same questions it is scored on is the pattern that had
-already reversed twice in this file. It has now reversed a third time, on the
-row that prompted the warning. Extending the holdout harness to cover index-time
-knobs is still the increment that would settle it; until then no row here is a
-candidate for anything.
+exactly the pick the holdout section prices, and until this increment it could
+not price it at all - the chunking sweep was not among the three knobs
+`holdout.py` cross-validated, because each row is a full index rebuild, so
+`120:60` had an in-sample margin and *no* out-of-sample estimate. A
+four-question lead chosen by looking at the same questions it is scored on is
+the pattern that had already reversed twice in this file. It has now reversed a
+third time, on the row that prompted the warning.
+
+**That estimate now exists, and it says this table is the most misleading one in
+the README.** `evals/holdout.py` cross-validates the chunking sweep as of this
+increment, and the answer is not "the lead is smaller than it looks" - it is
+that on all three metrics, sweeping chunking and taking the winner scores
+*worse* out of sample than ignoring the sweep and shipping `120:30`. Optimism
+runs +0.021 to +0.038, the largest of any sweep here, and `vs default` is
+negative on every metric: -0.016 at hit@1, -0.010 at nDCG@5, -0.014 at MRR.
+[The table is below](#the-other-bias-every-sweep-above-picked-its-own-winner).
+So no row here is a candidate for anything, and that is now measured rather than
+suspected.
 
 **`rrf_k`, all 132 questions, k=5.** The `changed` column counts questions whose
 top-5 ordering differs from the default - the measurement that separates
@@ -1949,6 +1969,7 @@ that choice on the held-out fold, and repeat over twenty different splits.
 ```bash
 python evals/holdout.py
 python evals/holdout.py --slice hard --folds 4
+python evals/holdout.py --no-chunking      # query-time knobs only
 ```
 
 ```
@@ -1966,7 +1987,28 @@ fusion weights  mrr       ngram=4             0.866      0.853     +0.014       
 mmr lambda      hit@1     off                 0.727      0.727     +0.000       +0.000     100%
 mmr lambda      ndcg@5    0.9                 0.777      0.775     +0.002       -0.002       0%
 mmr lambda      mrr       0.7                 0.803      0.801     +0.002       -0.001       0%
+chunking        hit@1     80:20               0.750      0.712     +0.038       -0.016       0%
+chunking        ndcg@5    120:60              0.788      0.767     +0.021       -0.010       0%
+chunking        mrr       120:15              0.814      0.788     +0.026       -0.014       0%
 ```
+
+**The `chunking` rows are new, and they are the reason the other three were not
+enough.** Every sweep above them is *query-time*: one fitted engine serves the
+whole sweep, because the knob only re-scores or re-orders lists that already
+exist. Chunking is index-time - each configuration is a different index - and
+that is why it sat outside this harness for six corpus sizes while the chunking
+table upstream went on printing an in-sample winner with nothing to check it
+against.
+
+Fixing it required no change to `ragkb/holdout.py` at all, which is worth
+stating because it is the part that was mis-diagnosed. That module consumes
+`config -> per-question scores` and is indifferent to whether producing those
+scores cost a re-fusion or a rebuild. The limitation was entirely in the eval
+script, which held one engine and handed it to every sweep. And the stated
+reason for the exclusion - that a rebuild per row is too expensive - turns out
+to be worth about half a second for all ten rows on this corpus. It was a guess
+about cost rather than a measurement of one, so the sweep now runs by default
+and `--no-chunking` opts out.
 
 Read `optimism` first, on the `fusion weights / hit@1` row. The weighted-RRF
 table earlier in this README reports `ngram=4` at 0.818 against uniform's 0.773
@@ -2025,6 +2067,37 @@ neither does the reading that replaced it. Both columns oscillate. That is what
 a small gold set looks like, and five corpus sizes have now failed to produce a
 trend in either column.
 
+**What the index-time rows say, in the order they should be read.** First,
+`optimism`: +0.038, +0.021 and +0.026 are the three largest figures in the
+table, roughly twice the worst query-time row and an order of magnitude above
+`rrf_k` and MMR. That direction is not a surprise and it is the control working
+- `rrf_k` is inert over two lists, so there is nothing for selection to inflate,
+whereas ten chunkings really are ten different indexes and selection has
+genuine variance to exploit. What is worth the ink is the *size*: +0.038 at
+hit@1 is five of the 132 questions, evaporating purely because the winner was
+chosen on the questions it was scored on.
+
+Second, and this is the finding: **`vs default` is negative on all three
+metrics.** Sweeping chunking and taking the winner is worse, out of sample, than
+never sweeping and shipping `120:30` - by 0.016, 0.010 and 0.014, or two,
+one and two questions. The chunking table upstream is not a table whose lead is
+overstated. It is a table whose entire procedure loses to ignoring it.
+
+Third, `stable` is **0%** on all three rows: across sixty folds the winner is
+never the same twice. The winner counts make that concrete - hit@1 is won by
+`80:20` on 55 of 100 folds, `120:15` on 31, and three other settings on the
+remaining 14; nDCG@5 splits 39/36 between `120:60` and `150:40`. `120:60`, the
+row this README crowned at twenty-four documents and retracted at twenty-six, is
+the in-sample nDCG@5 winner here and wins barely more than a third of the folds.
+
+One caveat on the `picked` column, because it is a tie rather than a win:
+`80:20` and `120:15` both score exactly 0.750 in-sample at hit@1, and the offer
+order resolves it. `ragkb.holdout` breaks ties on the order configurations are
+offered, and `chunking_sweep` puts the shipped default first precisely so a tie
+resolves towards not moving - but between two non-default settings the tie-break
+is arbitrary. It does not affect the held-out figure, which averages over folds
+that mostly disagree anyway.
+
 The reversal worth recording is `ngram only`, and it has now held twice running.
 At sixteen documents it was the control the weighted fusion could not beat out
 of sample on nDCG@5. At eighteen the holdout picked `ngram=4` on all three
@@ -2034,12 +2107,20 @@ though its stability has gone 0%, 40%, 5%, so the "only fusion row that is not a
 coin flip" reading lasted exactly one increment and is withdrawn. Five
 measurements, two reversals, one conclusion that has never actually changed:
 **the fusion has still not been shown to beat its own best input.**
-Four of the nine sweep/metric pairs have a negative `vs default` - on those, the
-honest estimate of tuning is worse than shipping the constant and never
-sweeping. Both the count and the membership are unchanged from twenty-four
-documents: the two `rrf_k` rows and the two MMR rows, on nDCG@5 and MRR in each
-case. That is the one thing in this section that five corpus sizes have not
-managed to move.
+**Seven of the twelve** sweep/metric pairs have a negative `vs default` - on
+those, the honest estimate of tuning is worse than shipping the constant and
+never sweeping. Four are the ones that were there before, and their membership
+is unchanged from twenty-four documents: the two `rrf_k` rows and the two MMR
+rows, on nDCG@5 and MRR in each case. That stability is the one thing five
+corpus sizes have not managed to move. The three new ones are the entire
+chunking sweep, which is the first knob in this repo to lose to its own default
+on *every* metric rather than on some of them.
+
+That shifts the balance of the table rather than adding a footnote to it. Of the
+four knobs now cross-validated, exactly one - the fusion weights - is positive
+against its default on every metric, and the section above has already recorded
+that its margin does not survive multiple-comparison correction. The other
+three lose on the majority of metrics or on all of them.
 
 The scope is limited on purpose and the module says so: folds are resampled from
 one small gold set, so `optimism` is itself a noisy estimate, and this cannot
@@ -2762,8 +2843,16 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 575 tests
+pytest -q      # 599 tests
 ```
+
+> That count was **575** for several increments and the tree collected 592
+> before this one, so it had drifted by seventeen without anyone noticing -
+> the same failure mode `tests/test_readme_provenance.py` was written to catch
+> for table captions, in a number that test does not read. It is corrected
+> here rather than quietly re-pinned, because a stale count in the sentence
+> introducing the test suite is exactly the kind of small false assurance this
+> README keeps arguing against.
 
 The suite covers tokenisation and chunk boundaries, BM25 saturation and length
 normalisation, TF-IDF normalisation, RRF scoring shape, every metric, the CLI,
@@ -2811,7 +2900,16 @@ winning every fold, that ties resolve towards the caller's first configuration
 so a default never moves for free, that the held-out mean covers every question
 once rather than averaging unequal folds, and - the test the module exists to
 pass - that twelve configurations of pure coin flips are detected as an inflated
-in-sample maximum with unstable winners), incremental indexing (that extending
+in-sample maximum with unstable winners), the index-time half of that harness
+(that the shipped default leads the offer order even when the caller never asked
+for it, since `vs default` is undefined without it and offer order is what
+breaks ties; that listing it explicitly does not offer it twice; that its column
+reproduces a plain `RAGEngine` ranking for ranking, because every optimism
+figure in those rows is measured against it; and - the test that would catch the
+failure mode worth catching - that distinct chunk settings really do build
+distinct indexes with differing rankings, since a sweep that quietly reused one
+engine would report exactly zero optimism, which looks like a clean result and
+means nothing), incremental indexing (that extending
 BM25 reproduces a single `fit` term for term and posting for posting, that
 adding one document changes the IDF of terms it does not contain, that an engine
 grown one document at a time returns rankings identical to a from-scratch build

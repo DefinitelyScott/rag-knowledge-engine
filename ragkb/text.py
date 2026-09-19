@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Sequence
+from typing import Dict, List, Sequence, Tuple
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+(?:['-][a-z0-9]+)*")
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
@@ -107,6 +107,34 @@ class Chunk:
 
 def _token_counts(sentences: Sequence[str]) -> List[int]:
     return [len(tokenize(sentence)) for sentence in sentences]
+
+
+def parse_chunk_specs(text: str) -> List[Tuple[int, int]]:
+    """Parse ``"target:overlap,target:overlap"`` into chunking settings.
+
+    An overlap at least as large as the target would make the chunker either
+    loop or emit chunks that are pure repetition, so it is rejected here rather
+    than deep inside a sweep - the same bound :func:`chunk_document` enforces,
+    checked once at the edge where a command line supplies it.
+
+    This lives beside the chunker rather than inside one eval script because
+    two of them now sweep these settings: ``evals/tune.py`` scores the
+    configurations against each other, and ``evals/holdout.py`` prices what
+    choosing between them costs out of sample.
+    """
+    specs: List[Tuple[int, int]] = []
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        target, _, overlap = item.partition(":")
+        pair = (int(target), int(overlap) if overlap else 0)
+        if pair[0] <= 0:
+            raise ValueError("target tokens must be positive: {}".format(item))
+        if pair[1] < 0 or pair[1] >= pair[0]:
+            raise ValueError("overlap must be in [0, target): {}".format(item))
+        specs.append(pair)
+    return specs
 
 
 def chunk_document(
