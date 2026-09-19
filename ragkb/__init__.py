@@ -11,6 +11,14 @@ from .ngram import CharNgramIndex, char_ngrams
 from .expansion import ExpansionConfig, expand_query, relevance_model
 from .rerank import mean_pairwise_similarity, mmr_rerank
 from .retriever import HybridRetriever, RetrievalResult, resolve_fusion_weights
+from .rankagree import (
+    Agreement,
+    TauResult,
+    compare_rankings,
+    kendall_tau_b,
+    rank_biased_overlap,
+    top_k_set_overlap,
+)
 from .attribution import (
     Attribution,
     ListAttribution,
@@ -57,6 +65,12 @@ __all__ = [
     "query_model",
     "mmr_rerank",
     "mean_pairwise_similarity",
+    "Agreement",
+    "TauResult",
+    "compare_rankings",
+    "kendall_tau_b",
+    "rank_biased_overlap",
+    "top_k_set_overlap",
     "ExpansionConfig",
     "expand_query",
     "relevance_model",
