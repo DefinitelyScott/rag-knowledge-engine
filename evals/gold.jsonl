@@ -130,3 +130,20 @@
 {"id": "h57", "question": "Is a small hand-labelled set with several answers marked per question ever worth more than one a thousand times its size?", "relevant": ["pooling-and-judgments", "evaluation"], "difficulty": "hard"}
 {"id": "h58", "question": "Can fitting the combination recover something neither of the earlier stages returned?", "relevant": ["learning-to-rank", "reranking"], "difficulty": "hard"}
 {"id": "h59", "question": "Where do the constants inside a ranking formula come from, and what replaces guessing at them?", "relevant": ["learning-to-rank", "bm25"], "difficulty": "hard"}
+{"id": "q74", "question": "What two things does the examination hypothesis say a click requires?", "relevant": ["click-models"], "difficulty": "easy"}
+{"id": "q75", "question": "What kind of session can the cascade model not describe?", "relevant": ["click-models"], "difficulty": "easy"}
+{"id": "q76", "question": "What does the dynamic Bayesian network add after the click, and what does that let it separate?", "relevant": ["click-models"], "difficulty": "easy"}
+{"id": "q77", "question": "What is the cost of weighting each observed click by the reciprocal of its examination probability?", "relevant": ["click-models"], "difficulty": "easy"}
+{"id": "q78", "question": "What is a shingle, and how is resemblance defined over two shingle sets?", "relevant": ["deduplication"], "difficulty": "easy"}
+{"id": "q79", "question": "Why does the minimum of the hashed shingles estimate Jaccard similarity?", "relevant": ["deduplication"], "difficulty": "easy"}
+{"id": "q80", "question": "What do the band and row counts control in locality-sensitive hashing?", "relevant": ["deduplication"], "difficulty": "easy"}
+{"id": "q81", "question": "What does a SimHash fingerprint trade against a MinHash signature?", "relevant": ["deduplication"], "difficulty": "easy"}
+{"id": "h60", "question": "People only ever choose from what they were already shown. How can those choices be used to judge what should have been shown instead?", "relevant": ["click-models", "learning-to-rank"], "difficulty": "hard"}
+{"id": "h61", "question": "Something got picked constantly because it sat at the top, not because it was any good. How do you tell those two apart?", "relevant": ["click-models"], "difficulty": "hard"}
+{"id": "h62", "question": "Scaling up the rare observations made my estimate correct on average but wildly unstable. Is that expected, and what is usually done about it?", "relevant": ["click-models"], "difficulty": "hard"}
+{"id": "h63", "question": "Nothing in the logs says anything about a page nobody was ever offered. Does assembling a test collection run into the same wall?", "relevant": ["click-models", "pooling-and-judgments"], "difficulty": "hard"}
+{"id": "h64", "question": "Someone opened a result and came straight back. Did it answer them, and can one recorded action tell me?", "relevant": ["click-models"], "difficulty": "hard"}
+{"id": "h65", "question": "My passage windows deliberately overlap by a sentence, so neighbours repeat each other. Where does that leave a check for repeated content?", "relevant": ["deduplication", "chunking"], "difficulty": "hard"}
+{"id": "h66", "question": "Comparing every item against every other one is too slow. What buys a cheap shortlist of likely matches instead?", "relevant": ["deduplication", "ann-search"], "difficulty": "hard"}
+{"id": "h67", "question": "Two pages say the same thing and only one of them is on my answer key. What does that do to a measured difference between two systems?", "relevant": ["deduplication", "pooling-and-judgments", "evaluation"], "difficulty": "hard"}
+{"id": "h68", "question": "Should the copy be dropped when the index is built, or pushed down when the question is answered? What does each choice give up?", "relevant": ["deduplication", "reranking"], "difficulty": "hard"}

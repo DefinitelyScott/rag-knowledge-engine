@@ -295,7 +295,7 @@ def test_engine_config_expansion_is_applied():
 
 
 def test_expansion_recovers_a_question_the_plain_query_misses():
-    """h15 is a documented miss at k=5; the borrowed terms find it.
+    """h30 is a documented miss at k=5; the borrowed terms find it.
 
     This test previously pinned h18 (`rag`). Growing the corpus from 14 to 16
     documents changed the pseudo-relevance feedback pool, and at 16 documents
@@ -308,17 +308,42 @@ def test_expansion_recovers_a_question_the_plain_query_misses():
     rank 4. At 20 it is not merely unrecovered - expansion no longer changes
     its top-5 at all. Four corpus sizes, three different answers, no change to
     the code in between: the lever never broke, its operating point is a
-    property of the feedback pool. h15 stays the pinned case because it is the
-    one that has held at every corpus size so far.
+    property of the feedback pool.
+
+    **The previous revision of this docstring said h15 "has held at every
+    corpus size so far". That is now false and is retracted.** At twenty-eight
+    documents h15 is no longer recovered at the shipped setting: the expanded
+    query returns `inverted-index`, `score-normalisation`, `index-compression`,
+    `learning-to-rank`, `click-models` and `rank-fusion` is not among them.
+    Nothing in `expansion.py` changed - two documents were added to the corpus.
+
+    Re-pinned to h30, chosen by measurement rather than by preference. Replaying
+    the shipped setting over five corpus sizes gives:
+
+        docs   h06   h15   h30   h32
+        18      -    REC   REC   REC
+        20     REC   REC   REC   REC
+        22     REC   REC   REC   REC
+        26     REC   REC   REC   REC
+        28     REC    -    REC   REC
+
+    h30 and h32 are the two that survive all five; h30 is pinned and h32 is the
+    standing alternate. That is a better-supported choice than the last one, and
+    it is worth being explicit that it is still the same *kind* of claim that
+    just failed - five observations, not a proof of stability. The set of
+    recovered questions at twenty-eight documents is {h06, h30, h32, h41, h60}
+    against {h06, h15, h30, h32} at twenty-six, so the churn is real and
+    two-directional rather than a slow decay.
     """
     engine = RAGEngine.from_corpus(CORPUS)
     question = (
-        "Why is discarding the numbers and keeping only positions "
-        "a robust way to merge two orderings?"
+        "Why does contrasting a two-tower model against passages picked at "
+        "random leave it unable to make the distinctions ranking actually "
+        "requires?"
     )
     config = ExpansionConfig(feedback_terms=5, original_weight=0.8)
-    assert "rank-fusion" not in engine.ranked_doc_ids(question, k=5)
-    assert "rank-fusion" in engine.ranked_doc_ids(question, k=5, expansion=config)
+    assert "embeddings" not in engine.ranked_doc_ids(question, k=5)
+    assert "embeddings" in engine.ranked_doc_ids(question, k=5, expansion=config)
 
 
 def test_expansion_composes_with_mmr():

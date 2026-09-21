@@ -70,7 +70,18 @@ _spec.loader.exec_module(significance_eval)
 #: Documents treated as "new" when ``--added`` is not supplied. These are the
 #: two the current increment introduced; an older increment can be re-measured
 #: at any time by naming its documents instead.
-DEFAULT_ADDED = "relevance-feedback,score-normalisation"
+#:
+#: This constant silently went stale for three increments. It was set to
+#: ``relevance-feedback,score-normalisation`` when this file was written at
+#: twenty-two documents, and the corpus then grew to twenty-four, twenty-six and
+#: twenty-eight without it being touched. Running the script with no flags
+#: therefore measured a two-increment-old document lever while printing a header
+#: that said "added: relevance-feedback, score-normalisation" - true as a
+#: description of what it measured, and misleading as a description of what the
+#: reader almost certainly wanted. Nothing caught it because the output was
+#: internally consistent; the header and the partition agreed with each other
+#: and both disagreed with the increment.
+DEFAULT_ADDED = "click-models,deduplication"
 
 
 def partition_gold(
