@@ -38,6 +38,7 @@ Usage:
     python evals/corpus_lever.py
     python evals/corpus_lever.py --added late-interaction,ann-search
     python evals/corpus_lever.py --pair hybrid3,hybrid2 --metric hit@1
+    python evals/corpus_lever.py --added "" --new-questions h77,h78,h79
 """
 
 from __future__ import annotations
@@ -81,24 +82,42 @@ _spec.loader.exec_module(significance_eval)
 #: reader almost certainly wanted. Nothing caught it because the output was
 #: internally consistent; the header and the partition agreed with each other
 #: and both disagreed with the increment.
-DEFAULT_ADDED = "click-models,deduplication"
+#:
+#: It then went stale a second time, one increment after that paragraph was
+#: written: the thirty-document increment added ``query-likelihood`` and
+#: ``term-dependence`` and left this naming ``click-models,deduplication``. The
+#: README figures for that increment were produced with an explicit ``--added``
+#: and are correct; only the no-flag default was wrong. The lesson is that a
+#: comment is not a guard, so the question-only mode below does not depend on
+#: this constant at all.
+DEFAULT_ADDED = "query-likelihood,term-dependence"
 
 
 def partition_gold(
-    gold: Sequence[Dict], added: Sequence[str]
+    gold: Sequence[Dict],
+    added: Sequence[str],
+    new_questions: Sequence[str] = (),
 ) -> Tuple[List[Dict], List[Dict]]:
-    """Split the gold set into questions that predate ``added`` and the rest.
+    """Split the gold set into questions that predate the increment and the rest.
 
-    A question is "carried" only when *none* of its relevant documents is new.
-    A multi-document question naming one old and one new document has to count
-    as new: on the old corpus part of its answer key does not exist, so its
-    score there would be depressed by the missing document rather than by
-    anything about retrieval.
+    A question is "carried" only when *none* of its relevant documents is new
+    and its id is not in ``new_questions``. A multi-document question naming
+    one old and one new document has to count as new: on the old corpus part of
+    its answer key does not exist, so its score there would be depressed by the
+    missing document rather than by anything about retrieval.
+
+    ``new_questions`` exists for increments that add questions and no
+    documents. There the document partition is empty by definition, so without
+    naming the questions directly every one of them would be scored as
+    "carried" and the new-versus-carried comparison - the whole point of the
+    script - would be impossible to make.
     """
-    new_ids = set(added)
+    new_docs = set(added)
+    new_ids = set(new_questions)
     carried, fresh = [], []
     for record in gold:
-        (fresh if new_ids & set(record["relevant"]) else carried).append(record)
+        is_new = record["id"] in new_ids or bool(new_docs & set(record["relevant"]))
+        (fresh if is_new else carried).append(record)
     return carried, fresh
 
 
@@ -189,7 +208,18 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--added",
         default=DEFAULT_ADDED,
-        help="comma-separated document ids to treat as newly added",
+        help=(
+            "comma-separated document ids to treat as newly added; pass an "
+            "empty string with --new-questions for a questions-only increment"
+        ),
+    )
+    parser.add_argument(
+        "--new-questions",
+        default="",
+        help=(
+            "comma-separated gold question ids to treat as new regardless of "
+            "which documents they name, e.g. h77,h78"
+        ),
     )
     parser.add_argument(
         "--exclude",
@@ -244,10 +274,18 @@ def main(argv=None) -> int:
                 ",".join(sorted(overlap))
             )
         )
-    if not added:
+    new_questions = [
+        name.strip() for name in args.new_questions.split(",") if name.strip()
+    ]
+    if not added and not new_questions:
         raise SystemExit("--added needs at least one document id")
 
     gold = significance_eval.load_gold(args.gold)
+    unknown_questions = sorted(set(new_questions) - {r["id"] for r in gold})
+    if unknown_questions:
+        raise SystemExit(
+            "not in the gold set: {}".format(",".join(unknown_questions))
+        )
     if excluded:
         # Rolling the corpus back means rolling the gold set back with it: a
         # question whose answer key names a removed document is unanswerable in
@@ -271,7 +309,7 @@ def main(argv=None) -> int:
     before_documents = {
         doc_id: text for doc_id, text in documents.items() if doc_id not in added
     }
-    carried, fresh = partition_gold(gold, added)
+    carried, fresh = partition_gold(gold, added, new_questions)
     if not carried:
         raise SystemExit("no questions predate the added documents")
 
@@ -283,7 +321,15 @@ def main(argv=None) -> int:
     before = build_engines(
         before_documents, routing, ngram_n=args.ngram_n, **config_kwargs
     )
-    after = build_engines(documents, routing, ngram_n=args.ngram_n, **config_kwargs)
+    # A questions-only increment leaves the corpus untouched, so the two arms are
+    # the same engine. Reusing it makes the document-lever line an identity
+    # check (it must read +0.0%, 0 became discordant, 0 stopped) rather than a
+    # second fit that could only agree or reveal nondeterminism.
+    after = (
+        build_engines(documents, routing, ngram_n=args.ngram_n, **config_kwargs)
+        if added
+        else before
+    )
 
     def measure(engines, subset):
         return cell(
@@ -301,9 +347,11 @@ def main(argv=None) -> int:
 
     print(
         "{} vs {} on {}, k={}   added: {}".format(
-            left, right, args.metric, args.k, ", ".join(sorted(added))
+            left, right, args.metric, args.k, ", ".join(sorted(added)) or "(none)"
         )
     )
+    if new_questions:
+        print("new questions named directly: {}".format(", ".join(new_questions)))
     print(
         "corpus {} -> {} documents   gold {} carried + {} new = {}".format(
             len(before_documents), len(documents), len(carried), len(fresh), len(gold)

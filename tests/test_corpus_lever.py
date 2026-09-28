@@ -212,6 +212,21 @@ def test_partition_with_nothing_added_carries_everything(lever):
     assert fresh == []
 
 
+def test_named_questions_are_new_even_on_old_documents(lever):
+    """A questions-only increment: nothing is added, the ids decide."""
+    gold = [_record("a", ["old"]), _record("b", ["old"]), _record("c", ["older"])]
+    carried, fresh = lever.partition_gold(gold, [], ["b"])
+    assert [r["id"] for r in carried] == ["a", "c"]
+    assert [r["id"] for r in fresh] == ["b"]
+
+
+def test_named_questions_and_added_documents_combine(lever):
+    gold = [_record("a", ["old"]), _record("b", ["new"]), _record("c", ["old"])]
+    carried, fresh = lever.partition_gold(gold, ["new"], ["c"])
+    assert [r["id"] for r in carried] == ["a"]
+    assert [r["id"] for r in fresh] == ["b", "c"]
+
+
 def test_discordance_flags_mark_only_disagreements(lever):
     assert lever.discordance_flags([1.0, 0.0, 0.5], [1.0, 1.0, 0.25]) == [
         False,
@@ -268,6 +283,42 @@ def test_exclude_rolls_the_corpus_back(lever):
         )
         == 0
     )
+
+
+def test_questions_only_increment_has_an_inert_document_lever(lever, capsys):
+    """With no documents added the two corpus arms are one engine, so the
+    document lever has to read as exactly nothing. Anything else would mean the
+    script was measuring something other than the corpus."""
+    assert (
+        lever.main(
+            [
+                "--added",
+                "",
+                "--new-questions",
+                "q01,h01",
+                "--bootstrap-resamples",
+                "50",
+                "--permutations",
+                "50",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "added: (none)" in out
+    assert "+ 2 new" in out
+    assert "(+0.0%" in out
+    assert "0 became discordant, 0 stopped" in out
+
+
+def test_unknown_question_is_rejected(lever):
+    with pytest.raises(SystemExit):
+        lever.main(["--added", "", "--new-questions", "no-such-question"])
+
+
+def test_nothing_new_at_all_is_rejected(lever):
+    with pytest.raises(SystemExit):
+        lever.main(["--added", ""])
 
 
 def test_unknown_method_is_rejected(lever):
