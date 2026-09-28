@@ -134,10 +134,44 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (28 documents, 138 chunks,
-149 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (30 documents, 150 chunks,
+163 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at twenty-eight documents and 149 questions: the
+> **Provenance.** Recomputed at thirty documents and 163 questions: the
+> ablation tables and the prose under them, the gold-set description, and the
+> significance and corpus-lever figures quoted in this note. **Everything else
+> that was current at twenty-eight documents is now marked stale at the point of
+> use** rather than silently carried forward: the fusion-reordering audit, the
+> tuning sweeps, the third-retriever, weighted-RRF, `rrf_k`, rank-agreement and
+> MMR sections, the difficulty audit, the full significance tables, holdout and
+> power. Those are one re-run each; they were not re-run here.
+>
+> **This increment grew the corpus, and the new questions bought almost no
+> power.** Two documents (`query-likelihood`, `term-dependence`) and fourteen
+> questions took the gold set from 149 to 163, and Holm survivors *fell*, from
+> 20 to 13, on an unchanged family of 150 comparisons. `evals/corpus_lever.py`
+> says why. The new questions are nearly all ties: on `hybrid3 vs hybrid2` they
+> went 0W/1L/13T (7.1% discordant, against 20.1% for the carried set), and on
+> `ngram vs hybrid2` 1W/1L/12T (14.3% against 36.2%). A question every method
+> gets right, or every method gets wrong, adds a row to the denominator and
+> nothing to the evidence. Holding the question set fixed, the two documents
+> also shaved the effects slightly (`hybrid3 vs hybrid2` nDCG@5 +0.045 to +0.039,
+> 27W/3L to 26W/5L; paired discordance change p=1.000), so the losses came from
+> both halves and neither is significant on its own. `hybrid3 vs hybrid2` is
+> still SUPPORTED, at p_holm 0.028 (26W/6L/131T).
+>
+> The lesson for the next increment is about how the questions are written,
+> not how many: easy questions on a new document are near-certain ties by
+> construction, so only the hard ones can move the survivor count.
+>
+> **The ablation's leader moved for the sixth transition running.** Hybrid now
+> takes five of six columns on the all slice (it took none at 149 questions).
+> `hybrid2 vs bm25` on nDCG@5 is +0.006 at p_holm 1.000, 8W/8L/147T. Nothing
+> about that is evidence; it extends the sequence below to `bm25, hybrid,
+> vector, bm25, hybrid, vector, hybrid` at 16 to 30 documents.
+>
+> **Previous increment's note (28 documents, 149 questions), kept as history.**
+> Recomputed at twenty-eight documents and 149 questions: the
 > ablation tables, the third-retriever tables, the chunking sweep, `rrf_k` over
 > two lists and three, the weighted-RRF weight sweep, the MMR lambda sweep, the
 > arbitration and rank-agreement sections, the whole significance section,
@@ -187,15 +221,15 @@ Current numbers on the bundled corpus and gold set (28 documents, 138 chunks,
 > documents it does not. The claim is retracted in place and the test re-pinned
 > to h30, chosen by replaying five corpus sizes rather than by preference.
 
-The gold set is split by difficulty. The `easy` slice is eighty-one
+The gold set is split by difficulty. The `easy` slice is eighty-seven
 questions whose wording shares vocabulary with the target document. The `hard`
-slice is sixty-eight questions written to avoid the target document's own terms -
+slice is seventy-six questions written to avoid the target document's own terms -
 "if someone writes automobiles but the page only ever says cars" instead of
-"vocabulary mismatch" - and forty-three of them are answered by more than one
+"vocabulary mismatch" - and forty-nine of them are answered by more than one
 document rather than one. Those counts are no longer a description of intent:
 `evals/difficulty.py` confirms the split does separate on measured
-query-document overlap (0.622 against 0.334 IDF-weighted, p < 5e-05), and also
-that all forty-three multi-document questions sit in the `hard` slice and none
+query-document overlap (0.633 against 0.346 IDF-weighted, p < 5e-05), and also
+that all forty-nine multi-document questions sit in the `hard` slice and none
 in `easy`, so the two axes coincide exactly and a hard-slice figure carries
 both. [The audit is
 here](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas).
@@ -208,37 +242,37 @@ gold-set description above them rather than as a result with its own provenance.
 They were marked stale at 106 questions for two revisions and are current again
 here.
 
-**all (149 questions, 43 with more than one relevant document)**
+**all (163 questions, 49 with more than one relevant document)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.711 | 0.846 | 0.879 | 0.799 | 0.742 | 0.777 |
-| bm25 | 0.705 | **0.866** | 0.886 | 0.802 | 0.745 | 0.778 |
-| vector | 0.711 | 0.839 | **0.893** | **0.815** | **0.750** | **0.780** |
+| hybrid | **0.730** | 0.847 | **0.896** | **0.809** | **0.754** | **0.792** |
+| bm25 | 0.718 | **0.871** | 0.883 | 0.797 | 0.747 | 0.784 |
+| vector | 0.718 | 0.847 | 0.890 | 0.803 | 0.748 | 0.784 |
 
-**easy (81 questions)**
-
-| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.877 | 0.938 | 0.963 | 0.963 | 0.922 | 0.909 |
-| bm25 | 0.877 | 0.938 | **0.975** | **0.975** | **0.930** | **0.915** |
-| vector | 0.864 | 0.938 | 0.963 | 0.963 | 0.917 | 0.902 |
-
-**hard (68 questions, 43 with more than one relevant document)**
+**easy (87 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.515 | 0.735 | 0.779 | 0.603 | 0.527 | 0.619 |
-| bm25 | 0.500 | **0.779** | 0.779 | 0.596 | 0.524 | 0.615 |
-| vector | **0.529** | 0.721 | **0.809** | **0.640** | **0.551** | **0.635** |
+| hybrid | 0.885 | 0.943 | 0.966 | 0.966 | 0.928 | 0.915 |
+| bm25 | 0.885 | 0.943 | 0.966 | 0.966 | **0.929** | **0.917** |
+| vector | 0.862 | 0.943 | 0.966 | 0.966 | 0.919 | 0.904 |
 
-**Hybrid is bold in no column of any of the three tables, for the first time
-since this section was written.** It is beaten or tied everywhere, by BM25 on
-the easy slice and by TF-IDF on the other two.
+**hard (76 questions, 49 with more than one relevant document)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.553 | 0.737 | **0.816** | **0.629** | **0.555** | **0.650** |
+| bm25 | 0.526 | **0.789** | 0.789 | 0.603 | 0.539 | 0.632 |
+| vector | 0.553 | 0.737 | 0.803 | 0.616 | 0.551 | 0.647 |
+
+**Hybrid is bold in nine of eighteen cells, one increment after it was bold in
+none.** It leads five of six columns on the all slice and four on the hard
+slice; BM25 keeps hit@3 on both and the easy slice's two ordering columns.
 [The error bars](#how-much-of-any-of-that-is-real-error-bars-on-the-ablation-table)
 say none of it clears correction, and
 [the arbitration audit](#the-tie-that-is-not-inertness-what-the-fusion-actually-reordered)
-says the two-list fusion reorders 69% of questions against BM25 and 72% against
+measured at 149 questions that the two-list fusion reorders 69% of questions against BM25 and 72% against
 TF-IDF to arrive there, so this is a fusion acting constantly and cancelling,
 not one standing still. The useful reading of these three tables is that the two-list
 fusion is the wrong thing to be looking at; the third list is where the
@@ -246,18 +280,20 @@ significant results live.
 
 The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
-hit@k - the column is decoration. hit@5 sits at 0.963 or better for all three
+hit@k - the column is decoration. hit@5 sits at 0.966 for all three
 methods, so there is almost nothing left there for a retrieval change to move.
 
-The hard slice restores headroom: hit@1 falls from 0.877 to 0.515 and MRR from
-0.909 to 0.619, and recall@k finally diverges from hit@k because a question
-answered by several documents can be half-satisfied. Twenty-four questions land
+The hard slice restores headroom: hybrid's hit@1 falls from 0.885 to 0.553 and
+MRR from 0.915 to 0.650, and recall@k finally diverges from hit@k because a
+question answered by several documents can be half-satisfied. Twenty-eight
+questions land
 in exactly that state at k=5, which is a failure mode the easy slice cannot
 express at all.
 
-The seventeen questions added this increment are harder than the set they
-joined, and the absolute numbers fall accordingly: hybrid's all-slice nDCG@5
-goes from 0.777 to 0.742 with no code change. A drop like that is what growing
+The fourteen questions added this increment are easier than the set they
+joined, and the absolute numbers rise accordingly: hybrid's all-slice nDCG@5
+goes from 0.742 to 0.754 with no code change (the previous increment's harder
+questions had moved it the other way, from 0.777 to 0.742). A drop like that is what growing
 a gold set towards the failure modes looks like, and it is the reason the
 absolute values in this file are only ever compared within a single revision.
 
@@ -349,6 +385,10 @@ its operating point moves with the feedback pool, and a test that pins one
 question to it is pinning the corpus, not the code.
 
 ### The tie that is not inertness: what the fusion actually reordered
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 This section was written when the ablation table printed the two-list fusion
 and plain TF-IDF as the same numbers on five of six columns. **At 149 questions
@@ -462,6 +502,10 @@ ablation table prints the same near-tie whether the rate is 0% or 72%, and
 those are different systems.
 
 ### Tuning the constants: chunk size, overlap, and `rrf_k`
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 Everything above sweeps a *query-time* knob against one fixed index. But that
 index is built from three numbers that had been constants since the first
@@ -632,6 +676,10 @@ BM25 and TF-IDF do here - and the honest version of that claim is that this
 corpus cannot demonstrate it.
 
 ### Query expansion: borrowing the words the question did not use
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 Neither retriever can match a term the query never contains, and fusing two
 retrievers that both missed the same synonym changes nothing - which is why the
@@ -828,6 +876,10 @@ exactly, which is the correctness check on the whole path.
 
 ### A third retriever: character n-grams, and what it cost the thesis
 
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
+
 Everything above this point fuses two ranked lists. It is worth being precise
 about what those two lists are: BM25 and TF-IDF are two *scoring functions*
 over one **representation**. Both call the same `tokenize`, both index whole
@@ -984,6 +1036,10 @@ rather than obvious.
 
 ### Weighted RRF: acting on "the third list is the best list"
 
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
+
 The n-gram section ends on an uncomfortable number. The character n-gram list
 *alone* scores nDCG@5 0.822, while the three-list fusion that contains it
 scores 0.787. Textbook RRF weights every list identically, so the fusion is
@@ -1061,6 +1117,10 @@ engine does by default; it is grounds for a knob and a table.
 
 ### `rrf_k` was not inert. It had nothing to arbitrate.
 
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
+
 The tuning section above closed with a claim it could not test: that `rrf_k`
 "would start to matter with more retrievers in the fusion, or with retrievers
 that disagree more than BM25 and TF-IDF do here - and the honest version of
@@ -1110,6 +1170,10 @@ twenty-six documents - because on a few questions the ranks are far enough
 apart for the Borda limit to differ from the default.
 
 ### The unit that claim was measured in cannot see order
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 Both arguments above rest on one number, and it is the wrong kind of number.
 
@@ -1196,6 +1260,10 @@ was specific enough to re-measure.
 
 ### Diversity: MMR re-ranking
 
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
+
 Accuracy metrics cannot see redundancy. A top-5 made of five paraphrases of one
 passage scores exactly the same as five complementary ones, but it is worth far
 less to an answerer. This corpus makes the problem concrete: the chunker
@@ -1268,6 +1336,10 @@ here on the full gold set, but it is *not* what a cross-validated pick chooses o
 most splits, and that gap now costs 0.004 of nDCG@5. The sweep below prices it.
 
 ### The column the diversity argument needed, and the two settings the table was mixing
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 The table above scores a technique whose entire justification is about recall,
 using metrics that are structurally unable to see recall, at a selection depth
@@ -1878,6 +1950,10 @@ for is not.
 
 ### Is the "hard slice" a real slice? Auditing the partition before the deltas
 
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
+
 Every table above this line that says *hard slice* is computed over the
 questions carrying `"difficulty": "hard"` in `evals/gold.jsonl` - the expansion
 sweep, the re-ranking sweep, the weighted-RRF table, `evals/holdout.py --slice
@@ -2028,6 +2104,10 @@ Three limits, stated where they apply rather than at the end:
 
 ### How much of any of that is real? Error bars on the ablation table
 
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
+
 Every table above this line reports a mean over the same 149 questions, and
 several of the differences in them are one question wide. That is not a
 rhetorical point: at n=149 one question is worth 0.007 of any per-query metric,
@@ -2161,6 +2241,10 @@ retrievers *can* disagree) is now the measured prerequisite for any retrieval
 claim this project wants to make.
 
 ### The dead pointer: the one comparison that was never tested
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 The section above ends by saying the retrievers agree on almost every question
 and that the largest disagreement anywhere is 13 out of 92. That was true when
@@ -2327,6 +2411,10 @@ section overstated the clean-text axis, and this is the measurement that caught
 it.
 
 ### The other bias: every sweep above picked its own winner
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 `significance.py` asks whether the gap between two *named* systems is real. It
 does not touch a second problem that runs through every sweep table in this
@@ -2502,6 +2590,10 @@ is price a cost that the tables had been reporting as zero. Combined with the
 it has to survive being scored on questions that did not choose it.
 
 ### So how many questions would it take? Pricing the standing excuse
+
+> **Stale (28 documents, 149 questions).** Not re-run after the thirty-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation for what changed underneath them.
 
 Every negative result above ends the same way, and `evals/significance.py`
 prints it verbatim: *the fix is a bigger and more discriminative gold set rather
