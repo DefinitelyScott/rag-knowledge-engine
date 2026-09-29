@@ -90,7 +90,12 @@ _spec.loader.exec_module(significance_eval)
 #: and are correct; only the no-flag default was wrong. The lesson is that a
 #: comment is not a guard, so the question-only mode below does not depend on
 #: this constant at all.
-DEFAULT_ADDED = "query-likelihood,term-dependence"
+#:
+#: At thirty-two documents (``federated-search``, ``conversational-search``)
+#: the comment finally got a guard: ``tests/test_corpus_lever.py`` now fails if
+#: any document named here is missing from the README's current provenance
+#: note, so updating the note without this constant, or the reverse, is caught.
+DEFAULT_ADDED = "federated-search,conversational-search"
 
 
 def partition_gold(

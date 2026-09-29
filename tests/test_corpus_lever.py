@@ -334,3 +334,29 @@ def test_unknown_document_is_rejected(lever):
 def test_a_document_cannot_be_added_and_excluded(lever):
     with pytest.raises(SystemExit):
         lever.main(["--added", "bm25", "--exclude", "bm25"])
+
+
+def test_default_added_matches_the_readme_provenance_note(lever):
+    """The no-flag default must name the increment the README says is current.
+
+    ``DEFAULT_ADDED`` went stale twice, each time with a comment explaining the
+    previous failure and nothing enforcing it. The README's first provenance
+    note is where every increment records what it changed, so it is the natural
+    anchor: every document the default treats as new has to be named in it, and
+    has to exist in the corpus.
+    """
+    with open(os.path.join(ROOT, "README.md"), "r", encoding="utf-8") as handle:
+        text = handle.read()
+    start = text.index("> **Provenance.**")
+    # The current note ends where the first carried-forward note begins.
+    end = text.index("**Previous increment's note", start)
+    note = text[start:end]
+    corpus = {
+        os.path.splitext(name)[0]
+        for name in os.listdir(os.path.join(ROOT, "corpus"))
+    }
+    added = [doc for doc in lever.DEFAULT_ADDED.split(",") if doc]
+    assert added, "DEFAULT_ADDED is empty"
+    for doc in added:
+        assert doc in corpus, doc
+        assert f"`{doc}`" in note, f"{doc} is not named in the current provenance note"
