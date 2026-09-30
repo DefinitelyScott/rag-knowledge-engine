@@ -399,5 +399,46 @@ def test_main_runs_end_to_end(capsys, tmp_path):
     printed = capsys.readouterr().out
     assert "realised noise" in printed
     assert "retention" in printed
+    assert "paired significance" in printed
     for name, _, _ in robustness.METHOD_ROUTING:
         assert name in printed
+
+
+def test_per_question_scores_average_to_the_sweep_mean():
+    """The paired vectors must be the same numbers the retention table averages.
+
+    If they were not - a different seed set, a different k, the clean rate
+    drawn several times - the significance table would test something other
+    than the table printed above it, and nothing on screen would show that.
+    """
+    engines = _engines()
+    means, _, _ = robustness.sweep(engines, GOLD, k=2, rates=[0.0, 0.2], seeds=[0, 1, 2])
+    for rate in (0.0, 0.2):
+        scores = robustness.per_question_ndcg(engines, GOLD, 2, rate, [0, 1, 2])
+        assert set(scores) == {name for name, _, _ in robustness.METHOD_ROUTING}
+        for name, values in scores.items():
+            assert len(values) == len(GOLD)
+            assert sum(values) / len(values) == pytest.approx(
+                means[rate][name]["ndcg@2"]
+            )
+
+
+def test_significance_rows_correct_over_the_whole_printed_family():
+    """Holm runs over every row printed, and identical vectors are never significant."""
+    same = [0.5, 1.0, 0.0, 0.25]
+    better = [1.0, 1.0, 1.0, 1.0]
+    scores = {
+        0.0: {"ngram": same, "hybrid3": same, "hybrid2": same, "bm25": same},
+        0.2: {"ngram": better, "hybrid3": same, "hybrid2": same, "bm25": same},
+    }
+    rows = robustness.significance_rows(scores, permutations=200)
+    assert len(rows) == 2 * len(robustness.SIGNIFICANCE_PAIRS)
+    assert [row[0] for row in rows] == sorted(row[0] for row in rows)
+    for rate, a, b, comparison, p_adj, reject in rows:
+        assert p_adj >= comparison.p_value
+        if rate == 0.0:
+            assert comparison.delta == 0.0
+            assert comparison.discordant == 0
+            assert not reject
+    noisy_lead = [row for row in rows if row[0] == 0.2 and row[1] == "ngram"][0]
+    assert noisy_lead[3].wins == 3 and noisy_lead[3].losses == 0

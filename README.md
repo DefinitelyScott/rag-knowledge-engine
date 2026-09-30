@@ -137,7 +137,33 @@ pytest -q
 Current numbers on the bundled corpus and gold set (32 documents, 162 chunks,
 190 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at thirty-two documents and 190 questions: the
+> **Provenance.** No corpus or gold-set change: still thirty-two documents and
+> 190 questions, and the last documents added are still `federated-search` and
+> `conversational-search`, so every figure the previous note recomputed stands.
+> This increment re-ran one stale section, the one stale for longest:
+> [Robustness](#robustness-the-one-condition-the-third-list-was-added-for), last
+> measured at twenty documents and ninety-two questions.
+>
+> **It also closed the gap that section named about itself.** Its only error
+> bar was the spread across noise draws; it said the sampling error over the
+> questions was larger and that `evals/significance.py` was "not yet wired into
+> this harness". `evals/robustness.py` now prints a paired permutation test and
+> bootstrap interval, Holm-corrected, on seed-averaged per-question nDCG@5. The
+> headline claim is now measured rather than eyeballed: under 20% character
+> noise `ngram` beats `hybrid3` by +0.196 [+0.164, +0.228], 145W/27L, p_holm at
+> the table's 0.001 floor, while on clean text the same pair stays mixed
+> (+0.029, 37W/22L, p_holm 0.086).
+>
+> **One sentence in that section did not survive the re-run.** It called the
+> robustness table the most stable in the README and said the retention gap
+> between the word lists and the character list "has not moved at all". It
+> moved: every method retains less at 190 questions, the word lists by about
+> five points and `ngram` by 2.7, so the gap widened from 27 to 29 points. The
+> wording is retracted in place. Everything else still marked stale stays
+> marked and was not re-run. Two tests were added (647 collected).
+>
+> **Previous increment's note (32 documents, 190 questions), kept as history.**
+> Recomputed at thirty-two documents and 190 questions: the
 > ablation tables and the prose under them, the gold-set description (including
 > the `evals/difficulty.py` figures it quotes), and the significance and
 > corpus-lever figures in this note. Every section already marked stale stays
@@ -3108,9 +3134,10 @@ letting the corpus imply otherwise.
 
 ### Robustness: the one condition the third list was added for
 
-> **Stale (20 documents, 92 questions).** The degradation curves below predate
-> the last two corpus increments. `python evals/robustness.py` re-runs them in
-> about eight seconds.
+> **Recomputed at 32 documents and 190 questions** after sitting stale at twenty
+> documents and ninety-two questions for six corpus increments, and extended
+> with the paired significance test that the stale version named as a gap.
+> `python evals/robustness.py` re-runs everything below in about twenty seconds.
 
 Every table above this line scores queries that were typed correctly. That is a
 convenient assumption and a false one, and it happens to test the character
@@ -3144,65 +3171,98 @@ Realised noise trails the knob, because tokens under four characters are never
 touched and the budget rounds down; the script reports what it achieved rather
 than what it asked for. At a requested 20% the realised rate is 0.129.
 
-nDCG@5, 92 questions, averaged over 7 noise draws per rate:
+nDCG@5 over all 190 questions, averaged over 7 noise draws per rate:
 
 | method | clean | 10% | 20% | retained at 20% | sd(seeds) |
 |---|---|---|---|---|---|
-| `bm25` | 0.774 | 0.656 | 0.508 | 65.6% | 0.048 |
-| `vector` | 0.779 | 0.660 | 0.512 | 65.7% | 0.046 |
-| `ngram` | 0.853 | 0.835 | 0.790 | **92.6%** | 0.022 |
-| `hybrid2` | 0.772 | 0.661 | 0.510 | 66.1% | 0.049 |
-| `hybrid3` | 0.814 | 0.724 | 0.596 | 73.2% | 0.044 |
+| `bm25` | 0.713 | 0.588 | 0.431 | 60.5% | 0.029 |
+| `vector` | 0.716 | 0.587 | 0.436 | 60.9% | 0.029 |
+| `ngram` | 0.783 | 0.753 | 0.704 | **89.9%** | 0.011 |
+| `hybrid2` | 0.715 | 0.591 | 0.436 | 61.0% | 0.029 |
+| `hybrid3` | 0.754 | 0.642 | 0.508 | 67.4% | 0.028 |
 
 The design claim survives contact with a measurement, and by a wide margin. The
-two word-level indexes lose better than a third of their ranking quality, and
-they lose it *together* - 65.6% and 65.7%, which is what "miss the same
-misspelling" looks like when you put a number on it. Fusing them changes
-nothing (66.1%): reciprocal rank fusion can only reorder what its inputs
-retrieved, and two lists that failed for the same structural reason have no
-disagreement for it to arbitrate. The character index barely notices, holding
-92.6%, because a one-character typo leaves most of a word's 4-grams intact.
-hit@1 tells the same story more bluntly: at 20% noise BM25 answers 38% of
-questions correctly at rank one and the n-gram index answers 69%.
+two word-level indexes lose close to 40% of their ranking quality, and they lose
+it *together* - 60.5% and 60.9%, which is what "miss the same misspelling" looks
+like when you put a number on it. Fusing them changes nothing (61.0%):
+reciprocal rank fusion can only reorder what its inputs retrieved, and two lists
+that failed for the same structural reason have no disagreement for it to
+arbitrate. The character index barely notices, holding 89.9%, because a
+one-character typo leaves most of a word's 4-grams intact. hit@1 tells the same
+story more bluntly: at 20% noise BM25 answers 32% of questions correctly at rank
+one and the n-gram index answers 63%.
 
-This is the most stable table in the README across corpus growth. Every
-retention figure has moved by less than two points between eighteen and twenty
-documents, and the gap the section exists to measure - roughly 27 points between
-the word lists and the character list - has not moved at all. Where the clean-text
-comparisons flip sign with every fourteen questions added, this one does not,
-because it is measuring a structural property rather than a handful of decided
-queries.
+**What twelve documents and ninety-eight questions did to it.** The stale
+version of this section called it "the most stable table in the README" and
+said the roughly 27-point retention gap between the word lists and the
+character list "has not moved at all". Against the ninety-two-question figures
+(65.6%, 65.7%, 92.6%, 66.1%, 73.2%), every method retains less now, but not
+equally: the word lists and `hybrid2` lost about five points each, `ngram`
+lost 2.7, and `hybrid3` lost 5.8. So the gap *widened*, to 29 points, rather
+than holding. The direction is what the new questions would predict - the
+hard slice grew from a minority to more than half the gold set, and a question
+written to avoid the target's vocabulary has fewer exact-match terms for a typo
+to destroy before the word lists run out of evidence - but that is an
+explanation, not a measurement, and this script does not split by slice. The
+qualitative reading survived intact; the "has not moved at all" wording did not,
+and is retracted. The seed spread roughly halved for the word lists (0.048 to
+0.029), which is what averaging over twice as many questions should do.
 
 **And then the fusion undoes most of it.** Adding the third list lifts retention
-from 66.1% to 73.2%, which reads like a win until you compare it against the
-third list on its own: 92.6%, at 0.790 nDCG@5 against the fusion's 0.596. Under
+from 61.0% to 67.4%, which reads like a win until you compare it against the
+third list on its own: 89.9%, at 0.704 nDCG@5 against the fusion's 0.508. Under
 noise the two brittle lists do not merely fail to help - they outvote the list
-that is still working. This is the `ngram only` control that `evaluate.py`
-already flags on clean text, failing here far more loudly, and it is the second
-independent axis on which the three-way fusion loses to its own third list. The
-script prints that comparison as a computed verdict rather than as prose, so it
-cannot drift out of agreement with the table when the corpus grows.
+that is still working. The script prints that comparison as a computed verdict
+rather than as prose, so it cannot drift out of agreement with the table when
+the corpus grows.
 
-Two things this does not establish. The seed spread (0.02-0.05 nDCG, now printed
-as its own column) bounds the variance from *drawing the noise*, which is the
-only uncertainty this script measures; the sampling error over 92 questions is a
-separate and larger one, and
-`evals/significance.py` is not yet wired into this harness - a real gap rather
-than a rounding detail. And "robust" here means robust to typing errors only.
-Vocabulary mismatch and paraphrase are a different failure mode with a different
-lever, which is what the query-expansion table above measures, and nothing here
-transfers to it.
+**The gap this section used to name, closed.** The stale version said the seed
+spread "bounds the variance from *drawing the noise*" only, that sampling error
+over the questions is "a separate and larger one", and that
+`evals/significance.py` "is not yet wired into this harness - a real gap rather
+than a rounding detail". It is wired in now. Each question's nDCG@5 is averaged
+over the seven noise draws, so the question stays the paired unit, and the same
+paired permutation test and bootstrap interval `evals/significance.py` uses are
+run on three pairs at the clean rate and at 20%, Holm-corrected over those six
+rows:
 
-The uncomfortable reading is the useful one - but only on the axis this script
-measures. A later increment put error bars on the clean-text half of that
-sentence and it did not hold: `ngram` against `hybrid3` on clean queries is
-22W/12L, a mixed result whose +0.039 nDCG@5 gap does not survive a familywise
-correction (see *The dead pointer*, above). The noisy half stands - 0.790
-against 0.596 is far too wide to be sampling error. So the defensible claim is
-the narrower one: **under query noise** the fusion is outvoted by its own third
-list, and on clean text the two are indistinguishable on this gold set. The
-"wins on both axes" reading was one axis of evidence and one axis of
-over-reading.
+| rate | pair | delta nDCG@5 | 95% CI | p_holm | W/L/T |
+|---|---|---|---|---|---|
+| clean | `ngram vs hybrid3` | +0.029 | [+0.004, +0.055] | 0.086 | 37/22/131 |
+| clean | `hybrid3 vs hybrid2` | +0.039 | [+0.020, +0.060] | 0.001 | 35/8/147 |
+| clean | `hybrid2 vs bm25` | +0.002 | [-0.008, +0.013] | 0.711 | 13/10/167 |
+| 20% | `ngram vs hybrid3` | +0.196 | [+0.164, +0.228] | 0.001 | 145/27/18 |
+| 20% | `hybrid3 vs hybrid2` | +0.072 | [+0.059, +0.086] | 0.001 | 134/21/35 |
+| 20% | `hybrid2 vs bm25` | +0.005 | [-0.001, +0.011] | 0.194 | 58/51/81 |
+
+The noisy half of the claim is now a measured result rather than an eyeballed
+one: the n-gram list beats the fusion that contains it on 145 questions and
+loses on 27, and the interval's lower end (+0.164) is more than five times the
+clean-text delta. The clean row for the same pair is the one *The dead pointer*
+already reported as mixed, and it still is: the bootstrap interval clears zero
+but the corrected permutation test does not, even in a family of six rather
+than 150.
+
+Three things to read correctly. p_holm 0.001 is the floor of this table, not a
+measurement of how strong the effect is: six rows over 10,000 permutations
+cannot report anything smaller. The clean `hybrid3 vs hybrid2` row reads 0.001
+here and 0.029 in `evals/significance.py` because that script corrects over 150
+comparisons and this one over six - same data, different family, and the 150
+figure is the one to quote for the clean claim. And under noise the W/L/T
+counts are over seed-averaged scores, which are nearly continuous, so ties are
+rare by construction; compare them across rows here, not against the
+integer-valued counts elsewhere in this README. Finally, the test is conditional
+on the typo model: it says the ordering would survive a different gold set with
+the same kind of keyboard noise, and says nothing about other kinds of noise.
+"Robust" here means robust to typing errors only. Vocabulary mismatch and
+paraphrase are a different failure mode with a different lever, which is what
+the query-expansion table above measures, and nothing here transfers to it.
+
+So the defensible claim is unchanged in shape and now carries its own evidence:
+**under query noise** the fusion is outvoted by its own third list, significantly
+and by a wide margin; on clean text the two are indistinguishable on this gold
+set. Adding the third list to the two-way fusion helps on both axes, and under
+noise that is significant in this family too.
 
 ## Persistence
 
@@ -3465,8 +3525,12 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 645 tests
+pytest -q      # 647 tests
 ```
+
+> At thirty-two documents, after the robustness refresh: 647, the two new tests
+> pinning that the paired significance vectors average to the same numbers the
+> retention table prints, and that Holm runs over every row the table prints.
 
 > At thirty-two documents: 645, the one new test being the guard that ties
 > `DEFAULT_ADDED` in `evals/corpus_lever.py` to the current provenance note.

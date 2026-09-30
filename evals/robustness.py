@@ -14,7 +14,7 @@ any rate - a corpus of this size saturates - but the *shape of the decline*: a
 method whose accuracy falls off a cliff between 5% and 20% noise is a method
 whose users will feel every typo they make.
 
-Three tables:
+Four tables:
 
 0. **Realised noise.** The requested rate and the achieved rate differ, because
    tokens shorter than four characters are skipped and a budget of edits rounds
@@ -32,6 +32,17 @@ Three tables:
    method that degrades gracefully is not mistaken for a strong one. Retention
    is reported with the standard deviation across seeds, because a gap in
    retention that is narrower than the seed spread is not a finding.
+
+3. **Paired significance under noise.** ``sd(seeds)`` bounds only the variance
+   from drawing the noise. The larger uncertainty is which questions happen to
+   be in the gold set, and until this table existed the README named that as
+   an open gap. Each question's nDCG is averaged over the noise draws, so the
+   question stays the paired unit, and the same paired permutation test and
+   bootstrap that ``evals/significance.py`` uses are run on three pairs at the
+   clean rate and at the noisiest rate, with Holm's correction over those six.
+   The test is conditional on the noise *distribution*: it asks whether the
+   ranking would survive a different gold set under the same typo model, not a
+   different typo model.
 
 Every rate above zero is averaged over several seeds. One draw of the noise is a
 single sample of a random variable, and comparing methods on one draw measures
@@ -55,8 +66,9 @@ from typing import Dict, List, Sequence, Tuple
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ragkb.engine import EngineConfig, RAGEngine  # noqa: E402
-from ragkb.metrics import aggregate, mean  # noqa: E402
+from ragkb.metrics import aggregate, mean, ndcg_at_k  # noqa: E402
 from ragkb.perturb import TypoConfig, character_error_rate, perturb  # noqa: E402
+from ragkb.significance import Comparison, compare, holm_bonferroni  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -73,6 +85,16 @@ METHOD_ROUTING = (
 )
 
 COLUMNS = ("hit@1", "hit@{k}", "ndcg@{k}", "mrr")
+
+#: The pairs the significance table tests, as ``(a, b)`` with the delta read as
+#: ``a - b``. One per claim the README makes about this harness: the third list
+#: alone against the fusion that contains it, the three-way fusion against the
+#: two-way one, and the two-way fusion against its stronger input.
+SIGNIFICANCE_PAIRS = (
+    ("ngram", "hybrid3"),
+    ("hybrid3", "hybrid2"),
+    ("hybrid2", "bm25"),
+)
 
 
 def load_questions(path: str) -> List[Dict]:
@@ -196,6 +218,83 @@ def retention_table(
         lines.append(
             "{:<10}{:>13.3f}{:>13.3f}{:>12.1f}%{:>13.3f}".format(
                 name, clean, noisy, 100.0 * retained, spread
+            )
+        )
+    return "\n".join(lines)
+
+
+def per_question_ndcg(
+    engines: Dict[str, RAGEngine],
+    gold: Sequence[Dict],
+    k: int,
+    rate: float,
+    seeds: Sequence[int],
+) -> Dict[str, List[float]]:
+    """Each method's nDCG@k per gold question, averaged over the noise draws.
+
+    Averaging inside the question rather than across it keeps the question as
+    the unit a paired test resamples, which is what makes these vectors
+    comparable with every other significance figure in the repo. At rate 0.0
+    one seed is used, for the same reason :func:`sweep` uses one: every seed
+    yields the identical query.
+    """
+    active_seeds = [seeds[0]] if rate == 0.0 else list(seeds)
+    totals: Dict[str, List[float]] = {
+        name: [0.0] * len(gold) for name, _, _ in METHOD_ROUTING
+    }
+    for seed in active_seeds:
+        questions = corrupt(gold, TypoConfig(rate=rate, seed=seed))
+        for name, engine_key, method in METHOD_ROUTING:
+            engine = engines[engine_key]
+            for index, (record, question) in enumerate(zip(gold, questions)):
+                ranked = engine.ranked_doc_ids(question, k=k, method=method)
+                totals[name][index] += ndcg_at_k(ranked, record["relevant"], k)
+    return {
+        name: [value / len(active_seeds) for value in values]
+        for name, values in totals.items()
+    }
+
+
+def significance_rows(
+    scores_by_rate: Dict[float, Dict[str, List[float]]],
+    pairs: Sequence[Tuple[str, str]] = SIGNIFICANCE_PAIRS,
+    permutations: int = 10000,
+    seed: int = 0,
+) -> List[Tuple[float, str, str, Comparison, float, bool]]:
+    """Paired tests for every pair at every rate, Holm-corrected as one family.
+
+    Returns ``(rate, a, b, comparison, adjusted_p, reject)`` rows in rate order.
+    The family is every row printed, so adding a rate or a pair tightens the
+    correction on all of them rather than letting the new rows ride for free.
+    """
+    raw: List[Tuple[float, str, str, Comparison]] = []
+    for rate in sorted(scores_by_rate):
+        scores = scores_by_rate[rate]
+        for a, b in pairs:
+            raw.append(
+                (rate, a, b, compare(scores[a], scores[b], permutations=permutations, seed=seed))
+            )
+    adjusted = holm_bonferroni([row[3].p_value for row in raw])
+    return [
+        (rate, a, b, comparison, p_adj, reject)
+        for (rate, a, b, comparison), (p_adj, reject) in zip(raw, adjusted)
+    ]
+
+
+def format_significance(rows, k: int) -> str:
+    header = "{:<8}{:<20}{:>9}{:>21}{:>10}{:>14}".format(
+        "rate", "pair", "delta", "95% CI", "p_holm", "W/L/T"
+    )
+    lines = [header, "-" * len(header)]
+    for rate, a, b, comparison, p_adj, _ in rows:
+        lines.append(
+            "{:<8}{:<20}{:>+9.3f}{:>21}{:>10.3f}{:>14}".format(
+                "clean" if rate == 0.0 else "{:.0%}".format(rate),
+                "{} vs {}".format(a, b),
+                comparison.delta,
+                "[{:+.3f}, {:+.3f}]".format(comparison.ci_low, comparison.ci_high),
+                p_adj,
+                "{}/{}/{}".format(comparison.wins, comparison.losses, comparison.ties),
             )
         )
     return "\n".join(lines)
@@ -356,6 +455,23 @@ def main(argv=None) -> int:
         "gap narrower than the sd(seeds) column is a draw, not a result."
     )
     print("\n" + verdict(means, 0.0, worst, args.k))
+
+    scores_by_rate = {
+        rate: per_question_ndcg(engines, gold, args.k, rate, seeds)
+        for rate in (0.0, worst)
+    }
+    rows = significance_rows(scores_by_rate)
+    print(
+        "\npaired significance on nDCG@{} (per-question mean over {} noise draws;\n"
+        "permutation test + bootstrap CI, Holm over all {} rows)".format(
+            args.k, args.seeds, len(rows)
+        )
+    )
+    print(format_significance(rows, args.k))
+    print(
+        "\nsd(seeds) above is the noise-draw spread; this table is the gold-set\n"
+        "spread, which is the larger of the two and the one a new question moves."
+    )
     return 0
 
 
