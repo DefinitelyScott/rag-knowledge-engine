@@ -188,3 +188,17 @@
 {"id": "h97", "question": "Why can a pile of downloaded examples be enough to judge a service you cannot inspect, and what does that pile fail to tell you?", "relevant": ["federated-search"], "difficulty": "hard"}
 {"id": "h98", "question": "How does a web engine decide whether to mix pictures or news items into the page it shows?", "relevant": ["federated-search"], "difficulty": "hard"}
 {"id": "h99", "question": "A mistake made early in a chain of lookups spills into every later step. Where does that happen, and why does it get worse?", "relevant": ["conversational-search", "multi-hop-retrieval"], "difficulty": "hard"}
+{"id": "q92", "question": "What share of misspellings did Damerau find were a single insertion, deletion, substitution or transposition?", "relevant": ["spelling-correction"], "difficulty": "easy"}
+{"id": "q93", "question": "How does the noisy channel model choose the best spelling correction?", "relevant": ["spelling-correction"], "difficulty": "easy"}
+{"id": "q94", "question": "Which three kinds of document identifier did the Differentiable Search Index compare?", "relevant": ["generative-retrieval"], "difficulty": "easy"}
+{"id": "q95", "question": "How does SEAL use an FM-index during generative retrieval?", "relevant": ["generative-retrieval"], "difficulty": "easy"}
+{"id": "h100", "question": "Someone types a word that is wrong but still a real word. Why does checking it against a word list fail, and what catches it instead?", "relevant": ["spelling-correction"], "difficulty": "hard"}
+{"id": "h101", "question": "Why would a record of what people actually typed beat a published word list for fixing their requests?", "relevant": ["spelling-correction"], "difficulty": "hard"}
+{"id": "h102", "question": "How can a fixer propose likely intended words without measuring the distance to every word it knows?", "relevant": ["spelling-correction"], "difficulty": "hard"}
+{"id": "h103", "question": "Before a lookup runs the request may need repairing. Which repairs are about the letters typed and which are about the words chosen?", "relevant": ["spelling-correction", "query-processing"], "difficulty": "hard"}
+{"id": "h104", "question": "Splitting embeddings into groups around learned centres is used to speed up nearest-vector lookups. How is the same grouping used to give every item a name a model can write out?", "relevant": ["ann-search", "generative-retrieval"], "difficulty": "hard"}
+{"id": "h105", "question": "Producing the questions a passage would answer helps two quite different kinds of system. Which, and why does each need it?", "relevant": ["sparse-neural-retrieval", "generative-retrieval"], "difficulty": "hard"}
+{"id": "h106", "question": "Why is putting one new item into the collection cheap for a postings-based structure and hard for a model that has memorised the collection?", "relevant": ["generative-retrieval", "inverted-index"], "difficulty": "hard"}
+{"id": "h107", "question": "How can a decoder be stopped from writing out a name that belongs to nothing in the collection?", "relevant": ["generative-retrieval"], "difficulty": "hard"}
+{"id": "h108", "question": "Why did an approach that looked strong on a hundred thousand items disappoint on millions of them?", "relevant": ["generative-retrieval"], "difficulty": "hard"}
+{"id": "h109", "question": "Why does a model that has only read whole passages struggle when it is handed short questions?", "relevant": ["generative-retrieval"], "difficulty": "hard"}

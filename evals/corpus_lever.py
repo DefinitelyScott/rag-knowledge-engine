@@ -95,7 +95,10 @@ _spec.loader.exec_module(significance_eval)
 #: the comment finally got a guard: ``tests/test_corpus_lever.py`` now fails if
 #: any document named here is missing from the README's current provenance
 #: note, so updating the note without this constant, or the reverse, is caught.
-DEFAULT_ADDED = "federated-search,conversational-search"
+#:
+#: At thirty-four documents it names ``spelling-correction`` and
+#: ``generative-retrieval``.
+DEFAULT_ADDED = "spelling-correction,generative-retrieval"
 
 
 def partition_gold(
