@@ -96,9 +96,10 @@ _spec.loader.exec_module(significance_eval)
 #: any document named here is missing from the README's current provenance
 #: note, so updating the note without this constant, or the reverse, is caught.
 #:
-#: At thirty-four documents it names ``spelling-correction`` and
-#: ``generative-retrieval``.
-DEFAULT_ADDED = "spelling-correction,generative-retrieval"
+#: At thirty-four documents it named ``spelling-correction`` and
+#: ``generative-retrieval``; at thirty-six it names ``search-diversification``
+#: and ``cross-lingual-retrieval``.
+DEFAULT_ADDED = "search-diversification,cross-lingual-retrieval"
 
 
 def partition_gold(
