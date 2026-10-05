@@ -97,9 +97,10 @@ _spec.loader.exec_module(significance_eval)
 #: note, so updating the note without this constant, or the reverse, is caught.
 #:
 #: At thirty-four documents it named ``spelling-correction`` and
-#: ``generative-retrieval``; at thirty-six it names ``search-diversification``
-#: and ``cross-lingual-retrieval``.
-DEFAULT_ADDED = "search-diversification,cross-lingual-retrieval"
+#: ``generative-retrieval``; at thirty-six it named ``search-diversification``
+#: and ``cross-lingual-retrieval``; at thirty-eight it names ``link-analysis``
+#: and ``query-autocompletion``.
+DEFAULT_ADDED = "link-analysis,query-autocompletion"
 
 
 def partition_gold(

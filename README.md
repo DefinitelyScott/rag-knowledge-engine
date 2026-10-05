@@ -103,8 +103,8 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/diversity.py` | audits the MMR sweep: the selection-depth mismatch between its accuracy and diversity columns, and the recall it never reported, on the multi-document questions that are the only place recall differs from hit |
 | `evals/arbitration.py` | audits the ablation table: how often the fused ranking differs from the lists it fuses, and what the difference bought - which separates a fusion that had nothing to do from one whose wins and losses cancelled |
 
-`corpus/` holds the sample knowledge base (thirty-six documents on information
-retrieval). `evals/gold.jsonl` holds 219 labelled questions with
+`corpus/` holds the sample knowledge base (thirty-eight documents on information
+retrieval). `evals/gold.jsonl` holds 235 labelled questions with
 the documents that answer them, split into an `easy` and a `hard` slice - a
 hand-assigned split, audited against a measured one in
 [Is the "hard slice" a real slice?](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas),
@@ -134,10 +134,108 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (36 documents, 193 chunks,
-219 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (38 documents, 213 chunks,
+235 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at thirty-six documents and 219 questions: the
+> **Provenance.** Recomputed at thirty-eight documents and 235 questions: the
+> ablation tables and the prose under them, the gold-set description (including
+> the `evals/difficulty.py` figures it quotes), the
+> [Robustness](#robustness-the-one-condition-the-third-list-was-added-for)
+> section with its paired significance table, and the significance and
+> corpus-lever figures in this note. Every section already marked stale stays
+> marked; none of them was re-run.
+>
+> **This increment grew the corpus by two documents.** `link-analysis`
+> (PageRank's random surfer, damping and dangling nodes, HITS hubs and
+> authorities with topic drift, SALSA, topic-sensitive and personalised
+> PageRank, anchor text, link scores as priors, link farms, TrustRank and
+> nofollow) sits beside `query-likelihood` (a static score enters as the
+> document prior) and `learning-to-rank` (where it ends up as one feature).
+> `query-autocompletion` (Most Popular Completion, top-k tries, session and
+> time-sensitive context, personalisation, neural generation for unseen
+> prefixes, error-tolerant matching, MRR and saved keystrokes, position bias,
+> filtering) sits beside `spelling-correction`, `click-models` and
+> `conversational-search`. Sixteen questions (`q100`-`q103`, `h121`-`h132`)
+> were written before anything was scored and none was dropped or reworded
+> afterwards. Twelve are hard and four of those are multi-document.
+>
+> **The one SUPPORTED claim is gone, as the previous note said it could be.**
+> `evals/significance.py` now finds **no comparison surviving Holm** out of
+> 150 (seven did at 219 questions). `hybrid3 vs hybrid2` on all-slice nDCG@5
+> went from +0.031 (36W/12L/171T, p_holm 0.044) to **+0.017 (35W/17L/183T,
+> p_holm 1.000)**. Its raw p is 0.026 and its bootstrap interval
+> [+0.003, +0.032] still excludes zero, but neither is corrected for 150
+> comparisons, and this README has always named the Holm column as the binding
+> one; it does not get to stop doing that the first time the column goes
+> against it. "Adding the third list to the fusion helps" is therefore NOT
+> SHOWN, and the sentences in the ablation section that leaned on it are
+> rewritten below rather than softened. The comparisons now nearest the line
+> are all-slice nDCG@5 `bm25 vs ngram` (p_holm 0.240, 25W/60L/150T), recall@5
+> `vector vs ngram` (0.240) and nDCG@5 `ngram vs hybrid2` (0.266): the
+> standalone n-gram list is still the strongest single method on every
+> all-slice column, by margins that no longer clear correction.
+>
+> **Both levers pulled against it.** `evals/corpus_lever.py --pair`, nDCG@5:
+>
+> | pair (nDCG@5) | carried 219, 36 docs | same 219, 38 docs | new 16 | paired doc-lever p |
+> | --- | --- | --- | --- | --- |
+> | `hybrid3 vs hybrid2` | 36W/12L/171T, 21.9% | 34W/14L/171T, 21.9% | 1W/3L/12T, 25.0% | 1.000 |
+> | `ngram vs hybrid2` | 58W/20L/141T, 35.6% | 56W/25L/138T, 37.0% | 3W/2L/11T, 31.2% | 0.453 |
+> | `hybrid2 vs bm25` | 12W/12L/195T, 11.0% | 16W/13L/190T, 13.2% | 1W/2L/13T, 18.8% | 0.227 |
+>
+> Holding the 219 questions fixed, the two documents cut `hybrid3 vs hybrid2`
+> from +0.031 to +0.022 without changing *how many* questions disagree (48
+> either way; six became discordant and six stopped): wins got smaller and two
+> became losses. Of the eight carried questions that moved against the
+> three-list fusion, three now have a new document in its top five (`q30` and
+> `h101` with `query-autocompletion`, `h35` with `link-analysis`); of the two
+> that moved towards it, `h89` has both. That fits the new documents acting as
+> character-level near neighbours - `query-autocompletion` is about typing,
+> characters, prefixes and edit distance, which is the n-gram list's home
+> ground - but three of eight is an observation, not a mechanism. The sixteen
+> new questions then split 1W/3L/12T against the three-list fusion (-0.052):
+> on `h124` (links in visitors' replies passing no credit) the two-list fusion
+> ranks `link-analysis` first and the three-list fusion loses it from the top
+> five, and on `h122` it falls from rank 1 to rank 3. The previous note
+> estimated one more p_holm step would cross 0.05; the actual move was from
+> two steps above the floor to the ceiling, which is what a claim resting on
+> a 24-question margin (36 against 12) does when the margin shrinks to 18.
+>
+> **For the third increment running, the "hard" questions were not hard, and
+> this time that was tested on purpose.** The previous note proposed that a new
+> document owns words nothing else uses and that any paraphrase keeps one of
+> them. These twelve were written to avoid the vocabulary only the new
+> documents use (no "PageRank", "hub", "authority", "anchor", "surfer",
+> "prefix", "trie", "completion", "keystroke"). Their IDF-weighted containment
+> is 0.339 against 0.327 for the other 120 hard questions - lower than the last
+> batch's 0.350, still not lower than the slice - and hybrid scores 0.740
+> nDCG@5 on them against 0.550 for the whole hard slice (0.805 on all sixteen).
+> Containment also failed to predict which were found: `h122` has the lowest
+> containment of the batch (0.082) and still ranks `link-analysis` first. So the
+> anchor explanation is at best incomplete. The alternative, stated and not
+> measured: a question about a topic only one document covers has no
+> lexically plausible competitor, so weak evidence is still enough to win.
+> Three are missed outright (`h123`, topic drift in query-time link scoring;
+> `h125`, link signals inside a learned ranker, which finds neither of its
+> documents; `h129`, filtering suggestions), and the other three
+> multi-document questions are fully satisfied. The batch that did
+> discriminate (`h77`-`h89`, containment 0.236) was written against documents
+> already in the corpus, which points at the next increment: harder questions
+> against carried documents, not another pair of new ones.
+>
+> **The absolute numbers rose, which is not good news for anything above.**
+> Hybrid's all-slice nDCG@5 went from 0.708 to 0.719: the documents alone take
+> the carried 219 to 0.713 and the new questions, at 0.805, add the rest.
+> hit@1 rose from 0.644 to 0.660 and MRR from 0.736 to 0.743. Six carried
+> questions changed state at k=5 - `h28`, `h31` and `h81` from half- to fully
+> satisfied, `h51` from missed to half, `h37` from half to missed and `h42`
+> from full to half - and none of the six has a new document in its top five,
+> so those are collection statistics shifting. The half-satisfied count went
+> from 43 to 41. `hybrid2 vs bm25` is +0.001 at 17W/15L/203T: still NOT SHOWN,
+> and still as close to a measured zero as this gold set produces.
+>
+> **Previous increment's note (36 documents, 219 questions), kept as history.**
+> Recomputed at thirty-six documents and 219 questions: the
 > ablation tables and the prose under them, the gold-set description (including
 > the `evals/difficulty.py` figures it quotes), the
 > [Robustness](#robustness-the-one-condition-the-third-list-was-added-for)
@@ -507,15 +605,15 @@ Current numbers on the bundled corpus and gold set (36 documents, 193 chunks,
 > documents it does not. The claim is retracted in place and the test re-pinned
 > to h30, chosen by replaying five corpus sizes rather than by preference.
 
-The gold set is split by difficulty. The `easy` slice is ninety-nine
+The gold set is split by difficulty. The `easy` slice is 103
 questions whose wording shares vocabulary with the target document. The `hard`
-slice is 120 questions written to avoid the target document's own terms -
+slice is 132 questions written to avoid the target document's own terms -
 "if someone writes automobiles but the page only ever says cars" instead of
-"vocabulary mismatch" - and sixty-nine of them are answered by more than one
+"vocabulary mismatch" - and seventy-three of them are answered by more than one
 document rather than one. Those counts are no longer a description of intent:
 `evals/difficulty.py` confirms the split does separate on measured
-query-document overlap (0.663 against 0.327 IDF-weighted, p < 5e-05), and also
-that all sixty-nine multi-document questions sit in the `hard` slice and none
+query-document overlap (0.676 against 0.328 IDF-weighted, p < 5e-05), and also
+that all seventy-three multi-document questions sit in the `hard` slice and none
 in `easy`, so the two axes coincide exactly and a hard-slice figure carries
 both. [The audit is
 here](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas).
@@ -528,62 +626,66 @@ gold-set description above them rather than as a result with its own provenance.
 They were marked stale at 106 questions for two revisions and are current again
 here.
 
-**all (219 questions, 69 with more than one relevant document)**
+**all (235 questions, 73 with more than one relevant document)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.644 | 0.813 | **0.872** | **0.774** | 0.708 | 0.736 |
-| bm25 | **0.662** | 0.813 | 0.868 | 0.769 | **0.711** | **0.743** |
-| vector | 0.658 | **0.817** | **0.872** | 0.772 | **0.711** | 0.741 |
+| hybrid | 0.660 | **0.821** | 0.868 | **0.781** | **0.719** | 0.743 |
+| bm25 | **0.668** | **0.821** | **0.872** | 0.777 | 0.718 | **0.748** |
+| vector | **0.668** | 0.813 | 0.864 | 0.777 | 0.718 | 0.745 |
 
-**easy (99 questions)**
-
-| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | **0.879** | 0.939 | **0.970** | **0.970** | 0.927 | 0.913 |
-| bm25 | **0.879** | **0.949** | **0.970** | **0.970** | **0.929** | **0.915** |
-| vector | **0.879** | 0.939 | **0.970** | **0.970** | 0.927 | 0.913 |
-
-**hard (120 questions, 69 with more than one relevant document)**
+**easy (103 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.450 | 0.708 | **0.792** | **0.613** | 0.528 | 0.590 |
-| bm25 | **0.483** | 0.700 | 0.783 | 0.604 | 0.531 | **0.601** |
-| vector | 0.475 | **0.717** | **0.792** | 0.608 | **0.533** | 0.599 |
+| hybrid | **0.893** | **0.951** | **0.971** | **0.971** | **0.935** | **0.923** |
+| bm25 | 0.883 | **0.951** | **0.971** | **0.971** | 0.933 | 0.920 |
+| vector | 0.883 | **0.951** | **0.971** | **0.971** | 0.930 | 0.917 |
 
-**The leader moved again, for the ninth transition running.** At 204
-questions hybrid led hit@3 and MRR and all three tied at hit@1; at 219 BM25
-takes hit@1 and MRR outright and ties TF-IDF on nDCG@5, TF-IDF takes hit@3,
-and hybrid keeps only recall@5 and a share of hit@5. Hybrid now sits last at
-rank one on both the all slice (0.644) and the hard slice (0.450), which is
-the most visible thing in these tables and, like the rest, is a handful of
-questions: `bm25 vs hybrid2` on hit@1 is 5W/1L/213T, p_holm 1.000. Every gap
-here is one to four questions wide (one question is worth 0.005 on the all
-slice), and `hybrid2 vs bm25` on nDCG@5 is -0.003 at p_holm 1.000,
-12W/12L/195T.
+**hard (132 questions, 73 with more than one relevant document)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.477 | **0.720** | 0.788 | **0.633** | 0.550 | 0.603 |
+| bm25 | **0.500** | **0.720** | **0.795** | 0.625 | 0.550 | **0.614** |
+| vector | **0.500** | 0.705 | 0.780 | 0.625 | **0.553** | 0.610 |
+
+**The leader moved again, for the tenth transition running.** At 219
+questions BM25 took hit@1 and MRR outright and tied TF-IDF on nDCG@5; at 235
+hybrid takes all-slice recall@5 and nDCG@5 (the latter by 0.001) and every
+easy-slice column it can, BM25 takes hit@5 and MRR, and BM25 and TF-IDF tie at
+hit@1. Hybrid is still last at rank one on the all slice (0.660) and the hard
+slice (0.477), and that is still a handful of questions: `bm25 vs hybrid2` on
+hit@1 is 5W/3L/227T, p_holm 1.000. Every gap here is one to two questions wide
+(one question is worth 0.004 on the all slice), and `hybrid2 vs bm25` on
+nDCG@5 is +0.001 at p_holm 1.000, 17W/15L/203T.
 [The error bars](#how-much-of-any-of-that-is-real-error-bars-on-the-ablation-table)
 say none of it clears correction, and
 [the arbitration audit](#the-tie-that-is-not-inertness-what-the-fusion-actually-reordered)
 measured at 149 questions that the two-list fusion reorders 69% of questions against BM25 and 72% against
 TF-IDF to arrive there, so this is a fusion acting constantly and cancelling,
 not one standing still. The useful reading of these three tables is that the two-list
-fusion is the wrong thing to be looking at; the third list is where the
-significant results live.
+fusion is the wrong thing to be looking at. Until 219 questions the third list
+was where the significant results lived; at 235 nothing in the significance
+run survives correction, so it is now only where the largest *uncorrected*
+differences live (see the provenance note).
 
 The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
-hit@k - the column is decoration. hit@5 is 0.970 for all three methods, so
+hit@k - the column is decoration. hit@5 is 0.971 for all three methods, so
 there is almost nothing left there for a retrieval change to move.
 
-The hard slice restores headroom: hybrid's hit@1 falls from 0.879 to 0.450 and
-MRR from 0.913 to 0.590, and recall@k finally diverges from hit@k because a
-question answered by several documents can be half-satisfied. Forty-three
-questions land in exactly that state at k=5 (forty-five at 204 questions; see
+The hard slice restores headroom: hybrid's hit@1 falls from 0.893 to 0.477 and
+MRR from 0.923 to 0.603, and recall@k finally diverges from hit@k because a
+question answered by several documents can be half-satisfied. Forty-one
+questions land in exactly that state at k=5 (forty-three at 219 questions; see
 the provenance note for which moved), which is a failure mode the easy slice
 cannot express at all.
 
-At thirty-six documents hybrid's all-slice nDCG@5 rose by 0.001 (0.707 to
+At thirty-eight documents hybrid's all-slice nDCG@5 rose by 0.011 (0.708 to
+0.719), 0.005 of it from the documents re-pricing the carried 219 questions
+(to 0.713) and the rest from sixteen new questions that score 0.805. At
+thirty-six documents hybrid's all-slice nDCG@5 rose by 0.001 (0.707 to
 0.708), but that is two opposite movements: the documents took the carried 204
 questions down to 0.703 and the fifteen new questions, which score 0.781, pulled
 it back up. At thirty-four documents the absolute numbers fell by 0.008: hybrid's
@@ -634,16 +736,23 @@ add questions and watch the sign move.
 So the standing claim remains the weaker and older one: **on this corpus, fusing
 BM25 with TF-IDF has still never been shown to beat BM25 alone.** The
 significance section tests exactly that comparison and reports NOT SHOWN
-(nDCG@5, -0.003, 12W/12L/195T at 219 questions) - twenty-four discordant
-questions splitting twelve to twelve, which is as close to a measured zero as this gold set
+(nDCG@5, +0.001, 17W/15L/203T at 235 questions) - thirty-two discordant
+questions splitting seventeen to fifteen, which is as close to a measured zero as this gold set
 can produce.
 
 Worth separating from that, because the two are easy to run together: the
-*three-list* fusion is a different claim and it does now clear correction. Every
-comparison surviving Holm in the current significance run has `hybrid3` or the
-n-gram list alone (`ngram`) on one side. Fusing BM25 with TF-IDF buys nothing here; adding a structurally different
-third list to that fusion is the one retrieval change this project has
-demonstrated.
+*three-list* fusion is a different claim. From twenty-six documents to
+thirty-six it cleared correction, and every comparison surviving Holm had
+`hybrid3` or the n-gram list alone (`ngram`) on one side. **At thirty-eight
+documents it no longer does** - `hybrid3 vs hybrid2` is +0.017 nDCG@5,
+35W/17L/183T, p_holm 1.000, and nothing in the 150-comparison run survives.
+This paragraph used to call the third list "the one retrieval change this
+project has demonstrated". On the current gold set it is the one change with a
+consistent sign across every all-slice column and an uncorrected interval
+that excludes zero, which is weaker, and is what the evidence now supports.
+Under typing noise it is still significant by a wide margin (see
+[Robustness](#robustness-the-one-condition-the-third-list-was-added-for));
+the clean-text claim is the one that lapsed.
 
 The corpus keeps being grown for exactly this reason, each new document placed
 beside an existing one it shares vocabulary with so that some question gets a
@@ -681,7 +790,16 @@ whose closing paragraphs already contrast deleting copies with demoting them;
 `cross-lingual-retrieval.md` went beside `query-likelihood.md` (its translation
 model is the monolingual version of the same move) and `domain-shift.md`
 (zero-shot transfer across languages is a special case of transfer across
-collections).
+collections). At thirty-eight `link-analysis.md` went beside
+`query-likelihood.md` (a query-independent score enters the generative model
+as a document prior) and `learning-to-rank.md`
+(where link counts end up as features), and `query-autocompletion.md` beside
+`spelling-correction.md` (error-tolerant prefix matching), `click-models.md`
+(accepted suggestions are biased feedback in the same way clicks are) and
+`conversational-search.md` (the session as context). The second of those did
+what this paragraph says new documents are for, perhaps too well: it shows up
+in the three-list fusion's top five on carried questions it does not answer,
+which is part of why that fusion's clean-text lead shrank (provenance note).
 
 The pattern that survived the growth unchanged for several increments has now
 broken: BM25 no longer simply takes the easy slice at rank one, it *ties*
@@ -3293,7 +3411,7 @@ letting the corpus imply otherwise.
 
 ### Robustness: the one condition the third list was added for
 
-> **Recomputed at 36 documents and 219 questions.** It was brought current at
+> **Recomputed at 38 documents and 235 questions.** It was brought current at
 > 32 documents and 190 questions two increments earlier, after sitting stale at
 > twenty documents and ninety-two questions for six corpus increments, and
 > extended then with the paired significance test the stale version named as a
@@ -3332,26 +3450,26 @@ Realised noise trails the knob, because tokens under four characters are never
 touched and the budget rounds down; the script reports what it achieved rather
 than what it asked for. At a requested 20% the realised rate is 0.129.
 
-nDCG@5 over all 219 questions, averaged over 7 noise draws per rate:
+nDCG@5 over all 235 questions, averaged over 7 noise draws per rate:
 
 | method | clean | 10% | 20% | retained at 20% | sd(seeds) |
 |---|---|---|---|---|---|
-| `bm25` | 0.711 | 0.574 | 0.416 | 58.6% | 0.033 |
-| `vector` | 0.711 | 0.571 | 0.418 | 58.8% | 0.032 |
-| `ngram` | 0.774 | 0.741 | 0.689 | **89.1%** | 0.015 |
-| `hybrid2` | 0.708 | 0.574 | 0.416 | 58.8% | 0.031 |
-| `hybrid3` | 0.740 | 0.628 | 0.495 | 66.9% | 0.031 |
+| `bm25` | 0.718 | 0.572 | 0.405 | 56.4% | 0.033 |
+| `vector` | 0.718 | 0.573 | 0.410 | 57.0% | 0.033 |
+| `ngram` | 0.772 | 0.736 | 0.680 | **88.0%** | 0.015 |
+| `hybrid2` | 0.719 | 0.571 | 0.410 | 57.0% | 0.032 |
+| `hybrid3` | 0.736 | 0.625 | 0.486 | 66.0% | 0.031 |
 
 The design claim survives contact with a measurement, and by a wide margin. The
-two word-level indexes lose about 41% of their ranking quality, and they lose
-it *together* - 58.6% and 58.8%, which is what "miss the same misspelling" looks
-like when you put a number on it. Fusing them changes nothing (58.8%):
+two word-level indexes lose about 43% of their ranking quality, and they lose
+it *together* - 56.4% and 57.0%, which is what "miss the same misspelling" looks
+like when you put a number on it. Fusing them changes nothing (57.0%):
 reciprocal rank fusion can only reorder what its inputs retrieved, and two lists
 that failed for the same structural reason have no disagreement for it to
 arbitrate. The character index barely notices, holding 89.1%, because a
 one-character typo leaves most of a word's 4-grams intact. hit@1 tells the same
-story more bluntly: at 20% noise BM25 answers 30% of questions correctly at rank
-one and the n-gram index answers 61%.
+story more bluntly: at 20% noise BM25 answers 29% of questions correctly at rank
+one and the n-gram index answers 60%.
 
 **What twelve documents and ninety-eight questions did to it** (measured at 32
 documents and 190 questions, against the twenty-document figures). The stale
@@ -3390,9 +3508,19 @@ widened to about 30 points. Every move is again inside one seed standard
 deviation. The noisy-text significance rows barely moved; the clean rows moved
 with the corpus, as the provenance note describes.
 
+**At thirty-eight documents and sixteen more questions, a little further.**
+Against the 219-question figures (58.6%, 58.8%, 89.1%, 58.8%, 66.9%), `bm25`
+lost 2.2 points of retention, `vector` and `hybrid2` 1.8, `ngram` 1.1 and
+`hybrid3` 0.9, so the word-list-to-character-list gap widened again, to about
+31 points. Every move is inside one seed standard deviation, as before. The
+noisy rows are where this increment changed nothing that matters: `hybrid3 vs
+hybrid2` at 20% noise is +0.076, 174/25/36, p_holm 0.001, essentially the
++0.078 it was. The clean row for the same pair is where the claim lapsed
+(next table).
+
 **And then the fusion undoes most of it.** Adding the third list lifts retention
-from 58.8% to 66.9%, which reads like a win until you compare it against the
-third list on its own: 89.1%, at 0.689 nDCG@5 against the fusion's 0.495. Under
+from 57.0% to 66.0%, which reads like a win until you compare it against the
+third list on its own: 88.0%, at 0.680 nDCG@5 against the fusion's 0.486. Under
 noise the two brittle lists do not merely fail to help - they outvote the list
 that is still working. The script prints that comparison as a computed verdict
 rather than as prose, so it cannot drift out of agreement with the table when
@@ -3410,29 +3538,34 @@ rows:
 
 | rate | pair | delta nDCG@5 | 95% CI | p_holm | W/L/T |
 |---|---|---|---|---|---|
-| clean | `ngram vs hybrid3` | +0.034 | [+0.007, +0.062] | 0.047 | 47/23/149 |
-| clean | `hybrid3 vs hybrid2` | +0.031 | [+0.017, +0.048] | 0.001 | 36/12/171 |
-| clean | `hybrid2 vs bm25` | -0.003 | [-0.014, +0.008] | 1.000 | 12/12/195 |
-| 20% | `ngram vs hybrid3` | +0.195 | [+0.163, +0.226] | 0.001 | 160/37/22 |
-| 20% | `hybrid3 vs hybrid2` | +0.078 | [+0.066, +0.092] | 0.001 | 165/18/36 |
-| 20% | `hybrid2 vs bm25` | +0.000 | [-0.006, +0.006] | 1.000 | 68/66/85 |
+| clean | `ngram vs hybrid3` | +0.037 | [+0.008, +0.065] | 0.043 | 49/28/158 |
+| clean | `hybrid3 vs hybrid2` | +0.017 | [+0.003, +0.032] | 0.077 | 35/17/183 |
+| clean | `hybrid2 vs bm25` | +0.001 | [-0.010, +0.012] | 0.821 | 17/15/203 |
+| 20% | `ngram vs hybrid3` | +0.194 | [+0.163, +0.224] | 0.001 | 172/42/21 |
+| 20% | `hybrid3 vs hybrid2` | +0.076 | [+0.065, +0.087] | 0.001 | 174/25/36 |
+| 20% | `hybrid2 vs bm25` | +0.005 | [-0.001, +0.011] | 0.172 | 77/67/91 |
 
-The noisy half of the claim is now a measured result rather than an eyeballed
-one: the n-gram list beats the fusion that contains it on 160 questions and
-loses on 37, and the interval's lower end (+0.163) is more than four times the
+The noisy half of the claim is a measured result rather than an eyeballed
+one: the n-gram list beats the fusion that contains it on 172 questions and
+loses on 42, and the interval's lower end (+0.163) is more than four times the
 clean-text delta. The clean row for the same pair is the one *The dead pointer*
-already reported as mixed, and it still is, although its p_holm crossed 0.05
-here for the first time (0.052 to 0.047). Do not read that as a change of
-verdict: it is one permutation step in a family of six, the same pair is
-p_holm 1.000 in the 150-comparison family of `evals/significance.py`, and the
-clean point estimate did not move (+0.035 to +0.034).
+already reported as mixed, and it still is (p_holm 0.043 here, 1.000 in the
+150-comparison family of `evals/significance.py`; the point estimate moved
+from +0.034 to +0.037).
+
+**The clean `hybrid3 vs hybrid2` row lost significance even in this family of
+six.** At 219 questions it read +0.031, p_holm 0.001; at 235 it reads +0.017,
+p_holm 0.077. In the 150-comparison family it went from 0.044 to 1.000. That is
+the lapse the provenance note describes, seen from the smaller family: the
+interval still excludes zero, the corrected test no longer does in either
+family, and the noisy row beside it did not move.
 
 Three things to read correctly. p_holm 0.001 is the floor of this table, not a
 measurement of how strong the effect is: six rows over 10,000 permutations
-cannot report anything smaller. The clean `hybrid3 vs hybrid2` row reads 0.001
-here and 0.044 in `evals/significance.py` because that script corrects over 150
-comparisons and this one over six - same data, different family, and the 150
-figure is the one to quote for the clean claim. And under noise the W/L/T
+cannot report anything smaller. The same pair can read differently here and in
+`evals/significance.py` because that script corrects over 150 comparisons and
+this one over six - same data, different family, and the 150 figure is the one
+to quote for any clean-text claim. And under noise the W/L/T
 counts are over seed-averaged scores, which are nearly continuous, so ties are
 rare by construction; compare them across rows here, not against the
 integer-valued counts elsewhere in this README. Finally, the test is conditional
@@ -3442,11 +3575,13 @@ the same kind of keyboard noise, and says nothing about other kinds of noise.
 paraphrase are a different failure mode with a different lever, which is what
 the query-expansion table above measures, and nothing here transfers to it.
 
-So the defensible claim is unchanged in shape and now carries its own evidence:
-**under query noise** the fusion is outvoted by its own third list, significantly
-and by a wide margin; on clean text the two are indistinguishable on this gold
-set. Adding the third list to the two-way fusion helps on both axes, and under
-noise that is significant in this family too.
+So the defensible claim has narrowed: **under query noise** the fusion is
+outvoted by its own third list, significantly and by a wide margin, and adding
+the third list to the two-way fusion helps, significantly and by a wide margin.
+On clean text the n-gram list and the three-list fusion are indistinguishable
+on this gold set, and since thirty-eight documents so are the three-list and
+two-list fusions after correction. The third list is now a demonstrated
+robustness lever and an undemonstrated accuracy one.
 
 ## Persistence
 
@@ -3711,6 +3846,10 @@ parse.
 ```bash
 pytest -q      # 647 tests
 ```
+
+> At thirty-eight documents: still 647, and the provenance guard again held the
+> `DEFAULT_ADDED` change until the current note named `link-analysis` and
+> `query-autocompletion`.
 
 > At thirty-six documents: still 647, and the provenance guard caught the
 > `DEFAULT_ADDED` change until this note named the new documents, which is its
