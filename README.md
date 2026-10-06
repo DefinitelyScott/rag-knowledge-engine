@@ -78,6 +78,7 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `ragkb/vector.py` | sparse TF-IDF vectors, L2-normalised, cosine similarity over the same inverted index |
 | `ragkb/ngram.py` | character n-gram TF-IDF: the same scoring, a different representation |
 | `ragkb/retriever.py` | hybrid retriever, reciprocal rank fusion |
+| `ragkb/scorefusion.py` | CombSUM / CombMNZ over min-max or z-score normalised scores - measured against RRF, deliberately not wired into the retriever |
 | `ragkb/expansion.py` | pseudo-relevance feedback query expansion (RM3-style) |
 | `ragkb/rerank.py` | Maximal Marginal Relevance re-ranking, redundancy diagnostic |
 | `ragkb/crossencoder.py` | second-stage re-ranker interface + lexical implementation |
@@ -101,6 +102,7 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/holdout.py` | nested cross-validation over four sweeps - three query-time knobs and, since this increment, index-time chunking - pricing what each sweep's top row cost by picking itself |
 | `evals/difficulty.py` | audits the hand-assigned `easy`/`hard` label against measured containment, then stratifies the ablation along the measured axis with question length as a negative control |
 | `evals/diversity.py` | audits the MMR sweep: the selection-depth mismatch between its accuracy and diversity columns, and the recall it never reported, on the multi-document questions that are the only place recall differs from hit |
+| `evals/score_fusion.py` | is the n-gram list's lead an artefact of RRF reading only ranks? CombSUM/CombMNZ against RRF and the n-gram control, with two pre-specified paired tests |
 | `evals/arbitration.py` | audits the ablation table: how often the fused ranking differs from the lists it fuses, and what the difference bought - which separates a fusion that had nothing to do from one whose wins and losses cancelled |
 
 `corpus/` holds the sample knowledge base (thirty-eight documents on information
@@ -119,6 +121,7 @@ abstention gate is measured against.
 python evals/evaluate.py     # ablation + query-time sweeps + the third retriever
 python evals/significance.py # error bars: which of those differences are real
 python evals/arbitration.py  # did the fusion reorder anything, and did the reordering pay?
+python evals/score_fusion.py # would reading scores instead of ranks have fused better?
 python evals/power.py        # how many questions the differences would need to be real
 python evals/corpus_lever.py  # did the new documents or the new questions move the rate?
 python evals/difficulty.py   # is the hard slice a real slice? and where the n-gram gain lives
@@ -145,7 +148,12 @@ Current numbers on the bundled corpus and gold set (38 documents, 213 chunks,
 > corpus-lever figures in this note. Every section already marked stale stays
 > marked; none of them was re-run.
 >
-> **This increment grew the corpus by two documents.** `link-analysis`
+> **Latest increment: no corpus or gold change.** It adds the
+> [score fusion](#score-fusion-is-the-dilution-an-artefact-of-reading-only-ranks)
+> section, measured at thirty-eight documents and 235 questions; no other
+> section was re-run, and every figure above and below it is unchanged.
+>
+> **The previous increment grew the corpus by two documents.** `link-analysis`
 > (PageRank's random surfer, damping and dangling nodes, HITS hubs and
 > authorities with topic drift, SALSA, topic-sensitive and personalised
 > PageRank, anchor text, link scores as priors, link farms, TrustRank and
@@ -1694,6 +1702,81 @@ evidence offered for it was in the wrong unit, and restating it in the right one
 both confirms the direction and cuts the effect size roughly in half. That is a
 better outcome than the alternative, and it is only visible because the claim
 was specific enough to re-measure.
+
+### Score fusion: is the dilution an artefact of reading only ranks?
+
+Weighted RRF answered the n-gram list's lead with "trust the strong list
+more". There is a second, more basic explanation it never ruled out: RRF
+discards every score and keeps only the rank, so it cannot tell a list that was
+sure of its top hit from one that was guessing. If that blindness is what
+dilutes the n-gram list, the classic score-based fusions should close the gap.
+
+`ragkb/scorefusion.py` implements them: CombSUM and CombMNZ (Fox & Shaw, TREC-2
+1994) over min-max or z-score normalised scores (Lee, SIGIR 1997). A chunk a
+list did not return gets that list's *lowest* normalised score, not zero -
+under z-scores the bottom of a list is negative, and handing "not retrieved" a
+0.0 would rank it above "retrieved, badly". Each list is searched to the same
+depth the retriever uses, and the module also implements RRF so the harness can
+first prove it reproduces the engine's own fusion: **two-list and three-list
+RRF through the module return the identical document ranking to
+`RAGEngine.ranked_doc_ids` on all 235 questions**, so the rows below differ in
+the fusion arithmetic and in nothing else.
+
+```bash
+python evals/score_fusion.py
+```
+
+**all 235 questions, k=5**
+
+| fusion | hit@1 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- |
+| hybrid2 (RRF) | 0.660 | 0.868 | 0.781 | 0.719 | 0.743 |
+| combsum2 minmax | 0.677 | 0.855 | 0.768 | 0.716 | 0.748 |
+| combmnz2 zscore | 0.677 | 0.855 | 0.768 | 0.716 | 0.748 |
+| hybrid3 (RRF) | 0.689 | 0.881 | 0.794 | 0.736 | 0.765 |
+| combsum3 minmax (pre-specified) | 0.702 | 0.877 | 0.798 | 0.743 | 0.773 |
+| combsum3 zscore | 0.702 | **0.885** | 0.804 | 0.745 | **0.775** |
+| combmnz3 minmax | 0.702 | 0.872 | 0.794 | 0.741 | 0.772 |
+| ngram only (control) | **0.719** | **0.915** | **0.835** | **0.772** | **0.798** |
+
+The script prints all eight score-fusion rows and the easy and hard slices; the
+four two-list variants are identical on every column here, and the hard slice
+(132 questions) tells the same story at larger amplitude: combsum3 minmax
+nDCG@5 0.586 against 0.571 for RRF and 0.626 for the control.
+
+**Pre-specified tests.** The score-fusion arm was fixed in advance to CombSUM
+with min-max normalisation over three lists, because that is the textbook
+default - not because it is the best row, which it is not (z-score edges it by
+0.002). An exploratory pass ran before the harness was written, which is why
+that is stated rather than assumed. Two paired tests on all-slice nDCG@5,
+Holm-corrected as a family of two:
+
+| comparison | delta [95% CI] | W/L/T | p | p_holm | verdict |
+| --- | --- | --- | --- | --- | --- |
+| combsum3 vs hybrid3 | +0.007 [-0.002, +0.017] | 17/11/207 | 0.164 | 0.164 | NOT SHOWN |
+| combsum3 vs ngram | -0.029 [-0.058, -0.000] | 28/49/158 | 0.049 | 0.098 | NOT SHOWN |
+
+**The hypothesis this section set out to test is not supported, and the
+direction of the evidence is against it.** Reading scores instead of ranks buys
+three-list fusion +0.007 nDCG@5 - 28 discordant questions out of 235, split
+17 to 11, indistinguishable from nothing. Against the n-gram control it is
+still 0.029 behind, losing 49 questions to 28; the raw p of 0.049 does not
+survive even a two-test correction, so "score fusion is *worse* than the
+control" is NOT SHOWN either, but nothing here points toward the gap closing.
+With two lists score fusion trades hit@1 (+0.017) for hit@5 (-0.013) and lands
+within 0.003 of RRF on nDCG@5, which is what you would expect from lists that already
+agree on most of their candidates.
+
+So the dilution is not mainly an artefact of RRF being blind to scores: a
+fusion that reads the scores dilutes the n-gram list almost as much. The more
+economical reading is the one the weighted-RRF section already pointed at -
+on this corpus the two word-level lists are simply worse inputs, and any
+equal-footing combination of a strong list with two weaker ones lands between
+them, whatever arithmetic does the combining. That is also why score fusion
+stays out of the retriever: the abstention threshold, `ragkb.cli explain`'s
+attribution arithmetic and the persisted config are all calibrated on RRF's
+score scale, and a second fusion mode in the main path would need to earn the
+cost of keeping all three honest. A non-significant +0.007 does not.
 
 ### Diversity: MMR re-ranking
 
@@ -3844,8 +3927,16 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 647 tests
+pytest -q      # 661 tests
 ```
+
+> With score fusion: 661, the fourteen new tests in `tests/test_scorefusion.py`.
+> Four pin the normalisation and missing-candidate arithmetic, two pin that
+> CombSUM reads score margins RRF cannot see and that CombMNZ rewards agreement,
+> and five pin that the module's RRF reproduces the engine's ranking
+> bit-for-bit, including over the whole gold set - the identity every row of
+> that section's table depends on. The other three reject bad options and
+> empty queries.
 
 > At thirty-eight documents: still 647, and the provenance guard again held the
 > `DEFAULT_ADDED` change until the current note named `link-analysis` and
