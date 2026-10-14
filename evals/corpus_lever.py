@@ -98,9 +98,10 @@ _spec.loader.exec_module(significance_eval)
 #:
 #: At thirty-four documents it named ``spelling-correction`` and
 #: ``generative-retrieval``; at thirty-six it named ``search-diversification``
-#: and ``cross-lingual-retrieval``; at thirty-eight it names ``link-analysis``
-#: and ``query-autocompletion``.
-DEFAULT_ADDED = "link-analysis,query-autocompletion"
+#: and ``cross-lingual-retrieval``; at thirty-eight it named ``link-analysis``
+#: and ``query-autocompletion``; at forty it names ``distributed-search`` and
+#: ``result-caching``.
+DEFAULT_ADDED = "distributed-search,result-caching"
 
 
 def partition_gold(

@@ -118,11 +118,18 @@ def test_rrf_changed_column_tracks_real_ordering_differences(documents, gold):
     move - so a column that only reported accuracy could not tell "equally
     good" from "identical". This asserts the distinction is measurable: some
     setting has to disagree with the default somewhere.
+
+    The second assertion used to be ``rows["1000"]["changed"] == 0``. At forty
+    documents ``rrf_k = 1000`` reorders one question (``h99``, two irrelevant
+    documents swapping ranks 4 and 5), so that pinned the corpus rather than
+    the code. What the column has to show is weaker and corpus-independent in
+    practice: a setting that flattens the fusion towards the default reorders
+    far fewer questions than one that sharpens it to near rank-only voting.
     """
     engine = RAGEngine(documents)
     rows = dict(tune.sweep_rrf_k(engine, gold, [1, 1000], k=5))
     assert rows["1"]["changed"] > 0
-    assert rows["1000"]["changed"] == 0
+    assert rows["1000"]["changed"] < rows["1"]["changed"]
 
 
 def test_rrf_k_does_not_change_the_index(documents, gold):
