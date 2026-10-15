@@ -99,6 +99,7 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/significance.py` | error bars on the ablation table: which of those differences survive a paired test and a familywise correction across all five methods |
 | `evals/power.py` | sample-size analysis: the smallest effect this gold set could detect, and what each claim would cost to establish |
 | `evals/corpus_lever.py` | which half of an increment moved the discordance rate: the new documents, or the new questions |
+| `evals/jackknife.py` | leave-one-document-out: how much of a method gap is the corpus's particular composition, rather than the questions drawn |
 | `evals/holdout.py` | nested cross-validation over four sweeps - three query-time knobs and, since this increment, index-time chunking - pricing what each sweep's top row cost by picking itself |
 | `evals/difficulty.py` | audits the hand-assigned `easy`/`hard` label against measured containment, then stratifies the ablation along the measured axis with question length as a negative control |
 | `evals/diversity.py` | audits the MMR sweep: the selection-depth mismatch between its accuracy and diversity columns, and the recall it never reported, on the multi-document questions that are the only place recall differs from hit |
@@ -124,6 +125,7 @@ python evals/arbitration.py  # did the fusion reorder anything, and did the reor
 python evals/score_fusion.py # would reading scores instead of ranks have fused better?
 python evals/power.py        # how many questions the differences would need to be real
 python evals/corpus_lever.py  # did the new documents or the new questions move the rate?
+python evals/jackknife.py     # would a different corpus have given the same gap?
 python evals/difficulty.py   # is the hard slice a real slice? and where the n-gram gain lives
 python evals/holdout.py      # what each sweep's top row cost by picking itself
 python evals/holdout.py --no-chunking   # the same, query-time knobs only
@@ -3560,6 +3562,67 @@ is the function that makes those bars explicit, and `evals/corpus_lever.py`
 prints them beside every rate it reports. The grid is the finding; the claims
 table is an illustration of how to use it.
 
+### The corpus is a sample too: a leave-one-document-out jackknife
+
+Every significance test above resamples *questions*. The last three corpus
+increments showed that is only half the uncertainty: two documents moved
+`hybrid3 vs hybrid2` by +0.019 nDCG@5 on questions that were not edited, and a
+different two had moved it by -0.009. `evals/jackknife.py` asks the other
+question. For each of the forty documents it removes that document, drops the
+questions whose answer key names it (they would score against a hole), and
+measures how the gap between two methods changes on the questions left. The
+*influence* of a document is the gap with it present minus the gap with it
+removed, on identical questions. It is a corpus effect, not a pure document
+effect: removing a document also shifts every term's IDF, so influences are
+never exactly zero (0 of 40 were, for all three pairs below).
+
+nDCG@5, 263 questions, 40 documents, left method minus right:
+
+| pair | full delta | influence mean | influence sd | range | helped / hurt | jackknife SE | delta / SE | sign flips |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `hybrid3 vs hybrid2` | +0.0193 | -0.0010 | 0.0032 | [-0.0087, +0.0055] | 15 / 25 | 0.0200 | 0.97 | 0 |
+| `hybrid2 vs bm25` | +0.0046 | +0.0010 | 0.0027 | [-0.0068, +0.0069] | 26 / 14 | 0.0164 | 0.28 | 4 |
+| `ngram vs hybrid2` | +0.0513 | +0.0006 | 0.0041 | [-0.0071, +0.0107] | 23 / 17 | 0.0252 | 2.04 | 0 |
+
+**The gap is broad, not a few documents, and that is the less comfortable
+reading.** No single document moves any of the three gaps by more than 0.011,
+and no removal flips the sign of `hybrid3 vs hybrid2` or `ngram vs hybrid2`.
+The biggest movers for the first pair are `passage-aggregation` (-0.0087, 13
+questions changed) and `reranking` (-0.0079) on the hurt side and `embeddings`
+(+0.0055) on the helped side. So the swing between +0.019 and -0.009 seen in
+earlier increments is not one rogue document. It is many documents each
+contributing a small push of either sign (15 helped and 25 hurt the three-list
+fusion), which is what you would expect if the gap depends on corpus
+composition diffusely and there is no cheap fix by auditing a few documents.
+
+**The jackknife says `hybrid3 vs hybrid2` is not distinguishable from
+zero across corpora, and `ngram vs hybrid2` just about is.** The document
+jackknife SE of the `hybrid3 vs hybrid2` delta is 0.0200 against a delta of
++0.0193 (ratio 0.97); for `hybrid2 vs bm25` it is 0.0164 against +0.0046
+(0.28, with four single removals that flip its sign: `cross-lingual-retrieval`,
+`link-analysis`, `passage-aggregation` and `reranking`). Only `ngram vs hybrid2`
+clears a ratio of 2 (2.04), and a ratio of 2 here is a rough guide, not a test.
+This matches the Holm result from the question-resampling tests (nothing
+survives for the first two pairs) from an independent direction, which is why
+it is worth recording, but it is not stronger evidence than that result.
+
+**Caveats that bound what this can claim.** The leave-one-out value is
+defined as the full delta minus the document's influence so every term sits on
+the full question set; that is an approximation of the textbook jackknife, not
+an exact one. A jackknife SE estimates sensitivity to dropping one of forty
+documents, which is a different quantity from the spread across *new* documents
+a future increment might add, and forty exchangeable units is a small number
+for a jackknife. And because the corpus is forty documents written on one topic
+by one author, "a different corpus" here means a subset of this one, not an
+independent draw. Treat the table as a diagnosis of where the noise floor is,
+not as a confidence interval for the method gap.
+
+**Next, stated as a guess.** If the effect is diffuse, the lever that matters
+is corpus *size*, not which documents are added. Re-running this script at
+forty-two and forty-four documents would show whether the jackknife SE shrinks
+roughly like 1/sqrt(n) (the corpus is simply too small) or stays flat (the
+method gap is genuinely corpus-dependent).
+
 ### What each stage costs
 
 > **Stale (20 documents, 92 questions).** Timings below were measured on the
@@ -4172,8 +4235,15 @@ parse.
 ## Tests
 
 ```bash
-pytest -q      # 661 tests
+pytest -q      # 671 tests
 ```
+
+> With the document jackknife: 671, the ten new tests in
+> `tests/test_jackknife.py`. They pin the closed forms (the jackknife standard
+> error against a hand-worked value and against sd times (n-1)/sqrt(n)), the
+> sign-flip rule, and the one structural decision the instrument makes: a
+> question naming a removed document is dropped from that document's comparison
+> rather than scored against a hole in its answer key.
 
 > With score fusion: 661, the fourteen new tests in `tests/test_scorefusion.py`.
 > Four pin the normalisation and missing-candidate arithmetic, two pin that
