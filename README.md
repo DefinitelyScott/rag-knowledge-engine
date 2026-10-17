@@ -106,8 +106,8 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/score_fusion.py` | is the n-gram list's lead an artefact of RRF reading only ranks? CombSUM/CombMNZ against RRF and the n-gram control, with two pre-specified paired tests |
 | `evals/arbitration.py` | audits the ablation table: how often the fused ranking differs from the lists it fuses, and what the difference bought - which separates a fusion that had nothing to do from one whose wins and losses cancelled |
 
-`corpus/` holds the sample knowledge base (forty documents on information
-retrieval). `evals/gold.jsonl` holds 263 labelled questions with
+`corpus/` holds the sample knowledge base (forty-two documents on information
+retrieval). `evals/gold.jsonl` holds 271 labelled questions with
 the documents that answer them, split into an `easy` and a `hard` slice - a
 hand-assigned split, audited against a measured one in
 [Is the "hard slice" a real slice?](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas),
@@ -139,20 +139,49 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (40 documents, 232 chunks,
-263 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (42 documents, 246 chunks,
+271 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at forty documents and 263 questions: the
-> ablation tables and the prose under them, the gold-set description (including
-> the `evals/difficulty.py` figures it quotes), the
-> [score fusion](#score-fusion-is-the-dilution-an-artefact-of-reading-only-ranks)
-> section, the
-> [Robustness](#robustness-the-one-condition-the-third-list-was-added-for)
-> section with its paired significance table, and the significance and
-> corpus-lever figures in this note. Every section already marked stale stays
-> marked; none of them was re-run.
+> **Provenance.** Recomputed at forty-two documents and 271 questions: the
+> header above, the three ablation tables in
+> [the ablation section](#the-ablation-hybrid-against-the-two-lists-it-fuses)
+> and the paragraph directly under them. **Nothing else was re-run.** The
+> [score fusion](#score-fusion-is-the-dilution-an-artefact-of-reading-only-ranks),
+> [jackknife](#the-corpus-is-a-sample-too-a-leave-one-document-out-jackknife)
+> and [robustness](#robustness-the-one-condition-the-third-list-was-added-for)
+> sections are now marked stale at 40 documents and 263 questions. The
+> significance, power, corpus-lever, difficulty-audit and tuning figures quoted
+> in prose, including the "recomputed at forty documents" paragraphs below, are
+> the 263-question run and are not marked individually; treat any figure in
+> this section that does not appear in the three tables above as 263-question.
 >
-> **This increment grew the corpus by two documents.** `distributed-search`
+> **This increment grew the corpus by two documents and eight questions.**
+> `snippet-generation` (query-biased summaries, sentence extraction features,
+> why generating them is disk-bound and how a compressed document store fixes
+> it, the limits of extractive snippets, the same problem inside a RAG
+> pipeline) and `temporal-ranking` (time-sensitive against atemporal queries,
+> temporal profiles and burst detection, recency priors, why a page's date is
+> unreliable, freshness against index and cache design). Eight questions
+> (`q108`, `q109`, `h157`-`h162`) were written before anything was scored and
+> none was dropped or reworded afterwards. Two are easy, six hard, two of the
+> hard ones multi-document (`h157` pairs `snippet-generation` with
+> `inverted-index`, `h162` pairs `temporal-ranking` with `result-caching`).
+>
+> **Measured effect on hybrid, k=5.** All-slice nDCG@5 moved 0.711 to 0.708.
+> The carried 263 questions fell from 0.711 to 0.704 (the documents add 14
+> chunks of competing text), and the eight new questions score 0.827 and pull
+> the mean back up by 0.004. Six of the eight find their target at rank one.
+> **Two do not, and both are reported:** `h157` finds `snippet-generation` at
+> rank one but `inverted-index` only at rank seven, so it is half-satisfied at
+> k=5 (the same anchor pattern as the last batch: the new document's own words
+> carry it, nothing carries the old partner); and `h160` (telling a one-off
+> event from a recurring one by when its pages were written) misses
+> `temporal-ranking` entirely, outside the top ten. The question was written
+> to avoid the document's vocabulary and it succeeded. It is the one hard
+> question in this batch that is hard in the sense the slice name promises.
+>
+> **Previous increment, kept for the record.**
+> It grew the corpus by two documents. `distributed-search`
 > (document against term partitioning, the broker's merge and why exact top-k
 > needs k from every partition, local against global collection statistics,
 > tail latency and hedged requests, replication against partitioning, tiered
@@ -827,64 +856,53 @@ gold-set description above them rather than as a result with its own provenance.
 They were marked stale at 106 questions for two revisions and are current again
 here.
 
-**all (263 questions, 80 with more than one relevant document)**
+**all (271 questions, 82 with more than one relevant document)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.650 | 0.810 | 0.867 | **0.778** | 0.711 | 0.735 |
-| bm25 | 0.650 | 0.806 | **0.871** | 0.771 | 0.706 | 0.735 |
-| vector | **0.662** | **0.817** | 0.859 | 0.772 | **0.713** | **0.740** |
+| hybrid | 0.649 | 0.801 | **0.863** | **0.775** | 0.708 | 0.732 |
+| bm25 | 0.653 | 0.801 | 0.856 | 0.761 | 0.701 | 0.731 |
+| vector | **0.657** | **0.812** | 0.856 | 0.768 | **0.709** | **0.736** |
 
-**easy (107 questions)**
-
-| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | **0.897** | 0.944 | **0.972** | **0.972** | **0.936** | **0.924** |
-| bm25 | 0.888 | **0.953** | **0.972** | **0.972** | 0.934 | 0.922 |
-| vector | 0.888 | 0.944 | **0.972** | **0.972** | 0.932 | 0.919 |
-
-**hard (156 questions, 80 with more than one relevant document)**
+**easy (109 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.481 | 0.718 | 0.795 | **0.644** | 0.557 | 0.606 |
-| bm25 | 0.487 | 0.705 | **0.801** | 0.632 | 0.550 | 0.608 |
-| vector | **0.506** | **0.731** | 0.782 | 0.635 | **0.563** | **0.617** |
+| hybrid | **0.908** | 0.945 | **0.972** | **0.972** | **0.940** | **0.929** |
+| bm25 | 0.890 | **0.954** | **0.972** | **0.972** | 0.935 | 0.923 |
+| vector | 0.899 | 0.945 | 0.963 | 0.963 | 0.933 | 0.923 |
 
-**The nDCG@5 leader held for the first time in twelve transitions, and the
-other bold cells moved anyway.** TF-IDF led all-slice nDCG@5 at 249 questions
-and still does at 263, by 0.002 over hybrid - one question's worth, so the
-streak ended by the same margin it ran on. Around it, at 249 hybrid and BM25
-tied on all-slice hit@3 and hit@5; at 263, with two new documents, TF-IDF
-takes hit@1, hit@3, nDCG@5 and MRR on the all slice and the hard slice, BM25
-takes hit@5 alone, and hybrid keeps only recall@5. Hybrid
-is tied with BM25 for last at rank one on the all slice (0.650), and that is
-still a handful of questions. Every gap here is one to three questions wide
-(one question is worth 0.004 on the all slice), and `hybrid2 vs bm25` on
-nDCG@5 is +0.005 at p_holm 1.000, 22W/17L/224T.
-[The error bars](#how-much-of-any-of-that-is-real-error-bars-on-the-ablation-table)
-say none of it clears correction, and
-[the arbitration audit](#the-tie-that-is-not-inertness-what-the-fusion-actually-reordered)
-measured at 149 questions that the two-list fusion reorders 69% of questions against BM25 and 72% against
-TF-IDF to arrive there, so this is a fusion acting constantly and cancelling,
-not one standing still. The useful reading of these three tables is that the two-list
-fusion is the wrong thing to be looking at. Until 219 questions the third list
-was where the significant results lived; since 235 nothing in the significance
-run survives correction, so it is now only where the largest *uncorrected*
-differences live (see the provenance note).
+**hard (162 questions, 82 with more than one relevant document)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.475 | 0.704 | **0.790** | **0.642** | 0.552 | 0.599 |
+| bm25 | **0.494** | 0.698 | 0.778 | 0.618 | 0.543 | 0.602 |
+| vector | **0.494** | **0.722** | 0.784 | 0.636 | **0.559** | **0.610** |
+
+**Still no method leads on every column, and the margins are still a handful of
+questions.** (Prose under this table through the end of the section still
+quotes the 263-question run except where a figure is restated here.) At 271
+questions TF-IDF leads the all slice on hit@1, hit@3, nDCG@5 and MRR, hybrid
+leads on hit@5 and recall@5, and BM25 leads nothing. TF-IDF's nDCG@5 lead over
+hybrid is 0.001 (0.709 against 0.708); one question is worth 0.004 on the all
+slice, so every gap in these tables is one to three questions wide. Hybrid's
+nDCG@5 edge over BM25 is +0.007. None of this was tested: the significance,
+arbitration and corpus-lever sections were **not** re-run at 271 questions (see
+the provenance note), so the p_holm and W/L/T figures quoted below belong to 40
+documents and 263 questions.
 
 The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
-hit@k - the column is decoration. hit@5 is 0.972 for all three methods, so
+hit@k - the column is decoration. hit@5 is 0.972 for hybrid and BM25 and 0.963 for TF-IDF, so
 there is almost nothing left there for a retrieval change to move.
 
-The hard slice restores headroom: hybrid's hit@1 falls from 0.897 to 0.481 and
-MRR from 0.924 to 0.606, and recall@k finally diverges from hit@k because a
-question answered by several documents can be half-satisfied. Forty-seven
-questions land in exactly that state at k=5 (forty-three at 249 questions).
-All four added are new multi-document questions (`h149`, `h150`, `h154`,
-`h155`); among carried questions two moved in (`h37`, `h63`, both from missed)
-and two moved out (`h95`, `h134`, both to missed). It is a failure mode the
+The hard slice restores headroom: hybrid's hit@1 falls from 0.908 to 0.475 and
+MRR from 0.929 to 0.599, and recall@k finally diverges from hit@k because a
+question answered by several documents can be half-satisfied. Forty-eight
+questions land in exactly that state at k=5 (forty-seven at 263 questions).
+The one added is a new multi-document question (`h157`); the 263-question
+breakdown of which carried questions moved in or out was not recomputed. It is a failure mode the
 easy slice cannot express at all.
 
 At forty documents hybrid's all-slice nDCG@5 fell by 0.006 (0.717 to 0.711),
@@ -1920,6 +1938,11 @@ better outcome than the alternative, and it is only visible because the claim
 was specific enough to re-measure.
 
 ### Score fusion: is the dilution an artefact of reading only ranks?
+
+> **Stale (40 documents, 263 questions).** Not re-run after the forty-two-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation.
+
 
 Weighted RRF answered the n-gram list's lead with "trust the strong list
 more". There is a second, more basic explanation it never ruled out: RRF
@@ -3564,6 +3587,11 @@ table is an illustration of how to use it.
 
 ### The corpus is a sample too: a leave-one-document-out jackknife
 
+> **Stale (40 documents, 263 questions).** Not re-run after the forty-two-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation.
+
+
 Every significance test above resamples *questions*. The last three corpus
 increments showed that is only half the uncertainty: two documents moved
 `hybrid3 vs hybrid2` by +0.019 nDCG@5 on questions that were not edited, and a
@@ -3777,6 +3805,11 @@ document cannot do what it describes, which is a gap worth naming rather than
 letting the corpus imply otherwise.
 
 ### Robustness: the one condition the third list was added for
+
+> **Stale (40 documents, 263 questions).** Not re-run after the forty-two-document
+> increment; the figures below are the previous revision's. See the provenance
+> note at the top of Evaluation.
+
 
 > **Recomputed at 40 documents and 263 questions.** It was brought current at
 > 32 documents and 190 questions two increments earlier, after sitting stale at
