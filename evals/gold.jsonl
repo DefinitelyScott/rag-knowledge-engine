@@ -269,3 +269,11 @@
 {"id": "h160", "question": "Looking at when the pages found for a question were written, how can you tell a question about a one-off event from one about something that recurs every year?", "relevant": ["temporal-ranking"], "difficulty": "hard"}
 {"id": "h161", "question": "Why is the date a web server reports for a page a poor guide to how new its content is?", "relevant": ["temporal-ranking"], "difficulty": "hard"}
 {"id": "h162", "question": "A page went online a minute ago and the engine's cached answers assume nothing changes. What has to give?", "relevant": ["temporal-ranking", "result-caching"], "difficulty": "hard"}
+{"id": "q110", "question": "What is the difference between overstemming and understemming, and what word pairs illustrate each?", "relevant": ["stemming"], "difficulty": "easy"}
+{"id": "q111", "question": "How does logarithmic merging of index segments limit the cost of adding documents?", "relevant": ["index-maintenance"], "difficulty": "easy"}
+{"id": "h163", "question": "Why does collapsing word endings help a search engine for Finnish much more than one for English?", "relevant": ["stemming"], "difficulty": "hard"}
+{"id": "h164", "question": "After a document is taken out of a collection, why can its entries linger in the stored lists for a while?", "relevant": ["index-maintenance"], "difficulty": "hard"}
+{"id": "h165", "question": "Two unrelated words look identical to the engine after a rule-based cleanup and a searcher gets strange results. How could a word list have prevented it?", "relevant": ["stemming"], "difficulty": "hard"}
+{"id": "h166", "question": "A batch of new pages arrives and the scores of older pages shift although their text never changed. What explains it?", "relevant": ["index-maintenance", "bm25"], "difficulty": "hard"}
+{"id": "h167", "question": "If the word-reduction rules are altered after launch, what happens to data already stored, and how can that cost be avoided?", "relevant": ["stemming"], "difficulty": "hard"}
+{"id": "h168", "question": "Renumbering documents so similar ones sit together makes lists smaller. What does that do to a collection that keeps receiving new documents?", "relevant": ["index-maintenance", "index-compression"], "difficulty": "hard"}
