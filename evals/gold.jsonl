@@ -277,3 +277,11 @@
 {"id": "h166", "question": "A batch of new pages arrives and the scores of older pages shift although their text never changed. What explains it?", "relevant": ["index-maintenance", "bm25"], "difficulty": "hard"}
 {"id": "h167", "question": "If the word-reduction rules are altered after launch, what happens to data already stored, and how can that cost be avoided?", "relevant": ["stemming"], "difficulty": "hard"}
 {"id": "h168", "question": "Renumbering documents so similar ones sit together makes lists smaller. What does that do to a collection that keeps receiving new documents?", "relevant": ["index-maintenance", "index-compression"], "difficulty": "hard"}
+{"id": "q112", "question": "Why does removing stop words break a query like 'to be or not to be'?", "relevant": ["tokenisation-and-stopwords"], "difficulty": "easy"}
+{"id": "q113", "question": "What are Broder's three categories of web queries?", "relevant": ["query-intent"], "difficulty": "easy"}
+{"id": "h169", "question": "A search for a programming language named with a letter and two plus signs returns pages about just the letter. What went wrong in preprocessing?", "relevant": ["tokenisation-and-stopwords"], "difficulty": "hard"}
+{"id": "h170", "question": "Why is it less necessary to throw away the commonest words today than when storage was scarce?", "relevant": ["tokenisation-and-stopwords", "index-compression"], "difficulty": "hard"}
+{"id": "h171", "question": "A language written with no gaps between words: how can an engine index it without a dictionary-based splitter?", "relevant": ["tokenisation-and-stopwords"], "difficulty": "hard"}
+{"id": "h172", "question": "Nearly everyone who typed a given query ended up choosing the same page. What does that suggest about their goal, and how should ranking respond?", "relevant": ["query-intent"], "difficulty": "hard"}
+{"id": "h173", "question": "A query could refer to an animal, a car or an operating system. Why does betting on the most popular meaning fail, and how can a ranker hedge?", "relevant": ["query-intent", "search-diversification"], "difficulty": "hard"}
+{"id": "h174", "question": "Why might a question-answering system decide before searching that some questions need no lookup at all?", "relevant": ["query-intent"], "difficulty": "hard"}
