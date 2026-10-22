@@ -106,8 +106,8 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/score_fusion.py` | is the n-gram list's lead an artefact of RRF reading only ranks? CombSUM/CombMNZ against RRF and the n-gram control, with two pre-specified paired tests |
 | `evals/arbitration.py` | audits the ablation table: how often the fused ranking differs from the lists it fuses, and what the difference bought - which separates a fusion that had nothing to do from one whose wins and losses cancelled |
 
-`corpus/` holds the sample knowledge base (forty-six documents on information
-retrieval). `evals/gold.jsonl` holds 287 labelled questions with
+`corpus/` holds the sample knowledge base (forty-eight documents on information
+retrieval). `evals/gold.jsonl` holds 295 labelled questions with
 the documents that answer them, split into an `easy` and a `hard` slice - a
 hand-assigned split, audited against a measured one in
 [Is the "hard slice" a real slice?](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas),
@@ -139,17 +139,17 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (46 documents, 274 chunks,
-287 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (48 documents, 285 chunks,
+295 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at forty-six documents and 287 questions: the
+> **Provenance.** Recomputed at forty-eight documents and 295 questions: the
 > header above, the three ablation tables in
 > [the ablation section](#the-ablation-hybrid-against-the-two-lists-it-fuses)
 > and the paragraph directly under them. **Nothing else was re-run.** The
 > [score fusion](#score-fusion-is-the-dilution-an-artefact-of-reading-only-ranks),
 > [jackknife](#the-corpus-is-a-sample-too-a-leave-one-document-out-jackknife)
 > and [robustness](#robustness-the-one-condition-the-third-list-was-added-for)
-> sections stay marked stale at 40 documents and 263 questions (now three
+> sections stay marked stale at 40 documents and 263 questions (now four
 > corpus increments old). The significance, power, corpus-lever,
 > difficulty-audit and tuning figures quoted in prose, including the
 > "recomputed at forty documents" paragraphs below, are the 263-question run
@@ -157,6 +157,49 @@ Current numbers on the bundled corpus and gold set (46 documents, 274 chunks,
 > not appear in the three tables above, or in this note, as 263-question.
 >
 > **This increment grew the corpus by two documents and eight questions.**
+> `boolean-retrieval` (AND, OR and NOT as merges over posting lists,
+> shortest-list-first ordering and skip pointers, feast or famine, the Salton,
+> Fox and Wu p-norm extended Boolean model, why ranked retrieval displaced it
+> for general use and why patent, systematic-review and e-discovery searchers
+> still keep it) and `latent-semantic-indexing` (Deerwester et al.'s 1990
+> truncated SVD of the term-document matrix, folding a query in, the cost of
+> the decomposition and of updating it, the unprincipled choice of k, pLSA and
+> LDA as probabilistic descendants, why the gains were mixed, and its place as
+> an ancestor of dense embeddings). Eight questions (`q114`, `q115`,
+> `h175`-`h180`) were written before anything was scored and none was dropped
+> or reworded afterwards. Two are easy, six hard, two of the hard ones
+> multi-document (`h177` pairs `boolean-retrieval` with `inverted-index`,
+> `h180` pairs `latent-semantic-indexing` with `embeddings`).
+>
+> **Measured effect on hybrid, k=5.** All-slice nDCG@5 stayed at 0.700 (0.700
+> before, rounded) and hit@5 moved from 0.847 to 0.844. That flat headline
+> hides two opposite movements: the carried 287 questions fell from 0.700 to
+> 0.694 and the eight new questions, at 0.905, pulled the mean back up. The
+> eight new questions are easy for every method (BM25 0.867, TF-IDF 0.905), and
+> all three find a relevant document for all eight at k=5, so they say little
+> about which method is better. Seven of the eight have a relevant document at rank one.
+> The weakest is `h177`: `boolean-retrieval` is at rank five and `inverted-index`
+> is not in the top ten, so it is half-satisfied. **Nothing in the new batch
+> misses entirely**, unlike the last increment, which is a statement about how
+> closely these two documents' vocabulary matches the questions, not evidence
+> that the questions are good ones.
+>
+> **Two carried questions got worse, and the new documents did not displace
+> them.** Hybrid misses went from 44 to 46 and partial-recall questions from 48
+> to 47: `h54` and `h63` moved from half-satisfied to missed, and `h177` is the
+> one new half-satisfied question. I checked both: in each the top five is
+> unchanged except that one slot, previously the target (`relevance-feedback`
+> for `h54`, `click-models` for `h63`), is now held by an existing document
+> (`link-analysis` and `learning-to-rank`). Neither new document appears. So
+> "added competing text" is the wrong explanation here; adding documents also
+> changes the collection statistics, IDF and chunk counts that every score is
+> computed from, and that shifted two near-tied rankings. I did not test that
+> further. The new documents do enter other rankings: one or both appear in the
+> hybrid top five of 53 carried questions (`boolean-retrieval` in 38,
+> `latent-semantic-indexing` in 21), and appearing is not the same as
+> displacing a target.
+>
+> **Previous increment (forty-six documents), kept for the record.**
 > `tokenisation-and-stopwords` (why whitespace splitting fails on hyphens,
 > apostrophes, dots and symbols such as "C++", case folding, languages without
 > spaces and character bigrams, Zipf's law and Luhn's mid-frequency argument,
@@ -201,7 +244,7 @@ Current numbers on the bundled corpus and gold set (46 documents, 274 chunks,
 > still a plausible cause for them, but I did not trace which document
 > displaced which target and three others improved for no reason I checked.
 >
-> **Previous increment (forty-four documents), kept for the record.**
+> **Earlier increment (forty-four documents), kept for the record.**
 > `stemming` (lemmatisation against rule-based stemmers, Lovins and Porter,
 > overstemming and understemming, Krovetz's dictionary compromise, why the
 > evidence for stemming is mixed in English and strong in morphologically rich
@@ -240,7 +283,7 @@ Current numbers on the bundled corpus and gold set (46 documents, 274 chunks,
 > document displaced which target, so the cause is stated as "added competing
 > text" only because nothing else changed.
 >
-> **Earlier increment (forty-two documents), kept for the record.**
+> **Older increment (forty-two documents), kept for the record.**
 > `snippet-generation` (query-biased summaries, sentence extraction features,
 > why generating them is disk-bound and how a compressed document store fixes
 > it, the limits of extractive snippets, the same problem inside a RAG
@@ -941,57 +984,56 @@ gold-set description above them rather than as a result with its own provenance.
 They were marked stale at 106 questions for two revisions and are current again
 here.
 
-**all (287 questions, 86 with more than one relevant document)**
+**all (295 questions, 88 with more than one relevant document)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.648 | **0.794** | 0.847 | **0.762** | **0.700** | **0.725** |
-| bm25 | 0.648 | 0.787 | **0.854** | **0.762** | 0.697 | 0.723 |
-| vector | **0.655** | 0.784 | 0.836 | 0.754 | 0.697 | **0.725** |
+| hybrid | 0.641 | **0.797** | 0.844 | **0.763** | **0.700** | 0.722 |
+| bm25 | 0.641 | 0.786 | **0.851** | **0.763** | 0.697 | 0.719 |
+| vector | **0.654** | 0.786 | 0.834 | 0.755 | **0.700** | **0.726** |
 
-**easy (113 questions)**
-
-| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | **0.903** | **0.956** | **0.973** | **0.973** | **0.939** | **0.927** |
-| bm25 | 0.894 | **0.956** | **0.973** | **0.973** | 0.936 | 0.924 |
-| vector | 0.894 | 0.947 | 0.965 | 0.965 | 0.930 | 0.919 |
-
-**hard (174 questions, 86 with more than one relevant document)**
+**easy (115 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.483 | **0.690** | 0.764 | **0.625** | 0.544 | 0.593 |
-| bm25 | 0.489 | 0.678 | **0.776** | **0.625** | 0.542 | 0.592 |
-| vector | **0.500** | 0.678 | 0.753 | 0.617 | **0.546** | **0.599** |
+| hybrid | **0.904** | **0.957** | **0.974** | **0.974** | **0.941** | **0.930** |
+| bm25 | 0.896 | **0.957** | **0.974** | **0.974** | 0.938 | 0.926 |
+| vector | 0.896 | 0.948 | 0.965 | 0.965 | 0.932 | 0.920 |
+
+**hard (180 questions, 88 with more than one relevant document)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.472 | **0.694** | 0.761 | **0.629** | 0.546 | 0.589 |
+| bm25 | 0.478 | 0.678 | **0.772** | **0.629** | 0.543 | 0.587 |
+| vector | **0.500** | 0.683 | 0.750 | 0.621 | **0.552** | **0.601** |
 
 **Still no method leads on every column, and the margins are still a handful of
 questions.** (Prose under this table through the end of the section still
-quotes the 263-question run except where a figure is restated here.) At 287
-questions TF-IDF leads hit@1 (0.655) and ties hybrid on MRR (0.725), BM25 leads
-hit@5 (0.854) and ties hybrid on recall@5 (0.762), and hybrid leads hit@3 and
-nDCG@5 (0.700 against 0.697 for both others). One question is worth 0.0035 on
-the all slice, so every gap in these tables is one to three questions wide, and
-hybrid's hit@5 (0.847) sits between BM25 (0.854) and TF-IDF (0.836). None of
-this was tested: the significance, arbitration and corpus-lever sections were
-**not** re-run at 287 questions (see the provenance note), so the p_holm and
-W/L/T figures quoted below belong to 40 documents and 263 questions.
+quotes the 263-question run except where a figure is restated here.) At 295
+questions TF-IDF leads hit@1 (0.654) and MRR (0.726), BM25 leads hit@5 (0.851)
+and ties hybrid on recall@5 (0.763), hybrid leads hit@3 (0.797), and hybrid and
+TF-IDF tie on nDCG@5 (0.700 against 0.697 for BM25). One question is worth
+0.0034 on the all slice, so every gap in these tables is one to three questions
+wide, and hybrid's hit@5 (0.844) sits between BM25 (0.851) and TF-IDF (0.834).
+None of this was tested: the significance, arbitration and corpus-lever
+sections were **not** re-run at 295 questions (see the provenance note), so the
+p_holm and W/L/T figures quoted below belong to 40 documents and 263 questions.
 
 The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
-hit@k - the column is decoration. hit@5 is 0.973 for hybrid and BM25 and 0.965
+hit@k - the column is decoration. hit@5 is 0.974 for hybrid and BM25 and 0.965
 for TF-IDF, so there is almost nothing left there for a retrieval change to
 move.
 
-The hard slice restores headroom: hybrid's hit@1 falls from 0.903 to 0.483 and
-MRR from 0.927 to 0.593, and recall@k finally diverges from hit@k because a
-question answered by several documents can be half-satisfied. Forty-eight
-questions land in exactly that state at k=5 (forty-seven at 279 questions).
-The count rose by one because the carried questions `h63` and `h166` moved from
-missed to half-satisfied while `h51` moved from half-satisfied to missed, and
-neither of the two new multi-document questions is half-satisfied (`h173` is
-fully found, `h170` is missed). It is a failure mode the
-easy slice cannot express at all.
+The hard slice restores headroom: hybrid's hit@1 falls from 0.904 to 0.472 and
+MRR from 0.930 to 0.589, and recall@k finally diverges from hit@k because a
+question answered by several documents can be half-satisfied. Forty-seven
+questions land in exactly that state at k=5 (forty-eight at 287 questions).
+The count fell by one: the carried questions `h54` and `h63` moved from
+half-satisfied to missed while the new multi-document question `h177` is
+half-satisfied (`h180`, the other new one, is fully found). It is a failure
+mode the easy slice cannot express at all.
 
 At forty documents hybrid's all-slice nDCG@5 fell by 0.006 (0.717 to 0.711),
 and all of it is the documents: they take the carried 249 questions from 0.717

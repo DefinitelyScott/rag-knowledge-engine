@@ -285,3 +285,11 @@
 {"id": "h172", "question": "Nearly everyone who typed a given query ended up choosing the same page. What does that suggest about their goal, and how should ranking respond?", "relevant": ["query-intent"], "difficulty": "hard"}
 {"id": "h173", "question": "A query could refer to an animal, a car or an operating system. Why does betting on the most popular meaning fail, and how can a ranker hedge?", "relevant": ["query-intent", "search-diversification"], "difficulty": "hard"}
 {"id": "h174", "question": "Why might a question-answering system decide before searching that some questions need no lookup at all?", "relevant": ["query-intent"], "difficulty": "hard"}
+{"id": "q114", "question": "What does a Boolean query return, and is the result ranked?", "relevant": ["boolean-retrieval"], "difficulty": "easy"}
+{"id": "q115", "question": "What technique uses a truncated singular value decomposition of the term-document matrix to bridge the vocabulary gap?", "relevant": ["latent-semantic-indexing"], "difficulty": "easy"}
+{"id": "h175", "question": "Why do patent examiners and systematic-review librarians still write exact-logic queries instead of relying on a ranked list?", "relevant": ["boolean-retrieval"], "difficulty": "hard"}
+{"id": "h176", "question": "A searcher adds one more required word and suddenly gets no results; with one fewer, thousands. What causes this swing and how have graded variants addressed it?", "relevant": ["boolean-retrieval"], "difficulty": "hard"}
+{"id": "h177", "question": "In what order should the lists be combined when several required terms must all be present, and why does that order save work?", "relevant": ["boolean-retrieval", "inverted-index"], "difficulty": "hard"}
+{"id": "h178", "question": "How can a document be judged similar to a query when they share no words at all?", "relevant": ["latent-semantic-indexing"], "difficulty": "hard"}
+{"id": "h179", "question": "Compressing every term into a few hundred blended dimensions helps with synonyms. What does it cost for rare names and identifiers?", "relevant": ["latent-semantic-indexing"], "difficulty": "hard"}
+{"id": "h180", "question": "Which early method that places related text near each other is the conceptual ancestor of today's learned dense vectors?", "relevant": ["latent-semantic-indexing", "embeddings"], "difficulty": "hard"}
