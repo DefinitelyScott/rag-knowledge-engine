@@ -293,3 +293,11 @@
 {"id": "h178", "question": "How can a document be judged similar to a query when they share no words at all?", "relevant": ["latent-semantic-indexing"], "difficulty": "hard"}
 {"id": "h179", "question": "Compressing every term into a few hundred blended dimensions helps with synonyms. What does it cost for rare names and identifiers?", "relevant": ["latent-semantic-indexing"], "difficulty": "hard"}
 {"id": "h180", "question": "Which early method that places related text near each other is the conceptual ancestor of today's learned dense vectors?", "relevant": ["latent-semantic-indexing", "embeddings"], "difficulty": "hard"}
+{"id": "q116", "question": "What is the frontier in a web crawler?", "relevant": ["web-crawling"], "difficulty": "easy"}
+{"id": "q117", "question": "What does it mean to rank items by exposure rather than only by relevance?", "relevant": ["fairness-in-ranking"], "difficulty": "easy"}
+{"id": "h181", "question": "How can a fetcher run thousands of parallel downloads yet avoid hammering any one server?", "relevant": ["web-crawling"], "difficulty": "hard"}
+{"id": "h182", "question": "Why would visiting the pages that change most often be a poor use of a limited fetch budget?", "relevant": ["web-crawling"], "difficulty": "hard"}
+{"id": "h183", "question": "Plain breadth-first discovery turns out to find well-linked pages early. Why, and how does that relate to link-based importance scores?", "relevant": ["web-crawling", "link-analysis"], "difficulty": "hard"}
+{"id": "h184", "question": "Two candidates are almost equally qualified, yet one gets far more attention. What in user behaviour explains the gap?", "relevant": ["fairness-in-ranking"], "difficulty": "hard"}
+{"id": "h185", "question": "Only one item can be listed first. How can a system still treat equally relevant items evenly over time, and what does that cost?", "relevant": ["fairness-in-ranking"], "difficulty": "hard"}
+{"id": "h186", "question": "Items shown more get clicked more, which then pushes them higher. How does this loop distort what logged clicks say about merit?", "relevant": ["fairness-in-ranking", "click-models"], "difficulty": "hard"}
