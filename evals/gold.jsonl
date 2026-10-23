@@ -301,3 +301,11 @@
 {"id": "h184", "question": "Two candidates are almost equally qualified, yet one gets far more attention. What in user behaviour explains the gap?", "relevant": ["fairness-in-ranking"], "difficulty": "hard"}
 {"id": "h185", "question": "Only one item can be listed first. How can a system still treat equally relevant items evenly over time, and what does that cost?", "relevant": ["fairness-in-ranking"], "difficulty": "hard"}
 {"id": "h186", "question": "Items shown more get clicked more, which then pushes them higher. How does this loop distort what logged clicks say about merit?", "relevant": ["fairness-in-ranking", "click-models"], "difficulty": "hard"}
+{"id": "q118", "question": "What is team-draft interleaving?", "relevant": ["interleaving"], "difficulty": "easy"}
+{"id": "q119", "question": "What does the cluster hypothesis say about documents that are similar to each other?", "relevant": ["cluster-hypothesis"], "difficulty": "easy"}
+{"id": "h187", "question": "Why can comparing two groups of users on click-through rate need so many more queries than showing every user one blended list?", "relevant": ["interleaving"], "difficulty": "hard"}
+{"id": "h188", "question": "Two rankings differ only by one document moving down a place, and users click at random. Why might the simplest merge still crown a winner?", "relevant": ["interleaving"], "difficulty": "hard"}
+{"id": "h189", "question": "A new ranker wins a live comparison because its titles are catchier. Which weakness of click-based judging does that show, and how do click models address it?", "relevant": ["interleaving", "click-models"], "difficulty": "hard"}
+{"id": "h190", "question": "For each relevant document, how would you check whether its closest neighbours are relevant too?", "relevant": ["cluster-hypothesis"], "difficulty": "hard"}
+{"id": "h191", "question": "Why does grouping only the documents returned for a query work better than grouping the whole collection in advance?", "relevant": ["cluster-hypothesis"], "difficulty": "hard"}
+{"id": "h192", "question": "One technique assumes relevant documents bunch together, another assumes the top results are too alike. How do their assumptions pull in opposite directions?", "relevant": ["cluster-hypothesis", "search-diversification"], "difficulty": "hard"}
