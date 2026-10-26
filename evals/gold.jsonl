@@ -309,3 +309,11 @@
 {"id": "h190", "question": "For each relevant document, how would you check whether its closest neighbours are relevant too?", "relevant": ["cluster-hypothesis"], "difficulty": "hard"}
 {"id": "h191", "question": "Why does grouping only the documents returned for a query work better than grouping the whole collection in advance?", "relevant": ["cluster-hypothesis"], "difficulty": "hard"}
 {"id": "h192", "question": "One technique assumes relevant documents bunch together, another assumes the top results are too alike. How do their assumptions pull in opposite directions?", "relevant": ["cluster-hypothesis", "search-diversification"], "difficulty": "hard"}
+{"id": "q120", "question": "What are exact match and token-level F1 used to score in question answering?", "relevant": ["question-answering"], "difficulty": "easy"}
+{"id": "q121", "question": "What are the three stages of entity linking?", "relevant": ["entity-linking"], "difficulty": "easy"}
+{"id": "h193", "question": "Why does a reader trained only on paragraphs that contain an answer keep producing one when the evidence is missing?", "relevant": ["question-answering"], "difficulty": "hard"}
+{"id": "h194", "question": "Which benchmark was built from queries real users typed, rather than questions written by someone looking at the passage?", "relevant": ["question-answering"], "difficulty": "hard"}
+{"id": "h195", "question": "Why is picking the most frequent sense of an ambiguous name a surprisingly strong baseline?", "relevant": ["entity-linking"], "difficulty": "hard"}
+{"id": "h196", "question": "How can a system resolve one ambiguous name by looking at the other names mentioned beside it?", "relevant": ["entity-linking"], "difficulty": "hard"}
+{"id": "h197", "question": "A model that answers from its own weights cannot show where an answer came from. Which approach trades that convenience for traceable support, and what does it need in front of the generator?", "relevant": ["question-answering", "rag"], "difficulty": "hard"}
+{"id": "h198", "question": "A query is only a few words long and names something ambiguous. What can recognising the thing it refers to add before retrieval, and what goes wrong if the guess is wrong?", "relevant": ["entity-linking", "query-intent"], "difficulty": "hard"}
