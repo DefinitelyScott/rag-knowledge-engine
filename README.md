@@ -139,17 +139,17 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (54 documents, 331 chunks,
-319 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (56 documents, 346 chunks,
+327 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at fifty-four documents and 319 questions: the
+> **Provenance.** Recomputed at fifty-six documents and 327 questions: the
 > header above, the three ablation tables in
 > [the ablation section](#the-ablation-hybrid-against-the-two-lists-it-fuses)
 > and the paragraph directly under them. **Nothing else was re-run.** The
 > [score fusion](#score-fusion-is-the-dilution-an-artefact-of-reading-only-ranks),
 > [jackknife](#the-corpus-is-a-sample-too-a-leave-one-document-out-jackknife)
 > and [robustness](#robustness-the-one-condition-the-third-list-was-added-for)
-> sections stay marked stale at 40 documents and 263 questions (now six
+> sections stay marked stale at 40 documents and 263 questions (now seven
 > corpus increments old). The significance, power, corpus-lever,
 > difficulty-audit and tuning figures quoted in prose, including the
 > "recomputed at forty documents" paragraphs below, are the 263-question run
@@ -157,6 +157,39 @@ Current numbers on the bundled corpus and gold set (54 documents, 331 chunks,
 > not appear in the three tables above, or in this note, as 263-question.
 >
 > **This increment grew the corpus by two documents and eight questions.**
+> `retrievability` (Azzopardi and Vinay's access-bias measure, counting how
+> often a document is retrieved over a generated query set at a rank cutoff, the
+> Gini coefficient over that distribution, document-length normalisation as a
+> source of bias, the tension between best accuracy and fairest access, and the
+> caveats on query generation and cutoff) and `knowledge-distillation` (Hinton
+> and colleagues' soft targets, DistilBERT, Margin-MSE cross-architecture
+> distillation, reader-to-retriever distillation, cross-encoder teachers in
+> RocketQA and ColBERTv2, and the limits: bounded by the teacher, inherited
+> false negatives, domain transfer). Both were written from my recollection of
+> the cited papers and were **not** checked against the originals; verify the
+> attributions and qualitative claims before treating this corpus as a citable
+> source. Eight questions (`q122`, `q123`, `h199`-`h204`) were written before
+> anything was scored and none was dropped or reworded afterwards. Two are
+> easy, six hard, two of the hard ones multi-document (`h201` pairs
+> `retrievability` with `bm25`, `h204` pairs `knowledge-distillation` with
+> `negative-mining`).
+>
+> **Measured effect on hybrid, k=5: a small loss on the headline, and the new
+> questions are not where the loss is.** All-slice nDCG@5 0.703 to 0.698, hit@5
+> 0.843 to 0.844, hit@1 0.646 to 0.636, MRR 0.721 to 0.717. The eight new
+> questions score 0.749 nDCG@5 under hybrid (BM25 alone scores 0.841 on them),
+> all eight have a relevant document in the top five, and `h201` and `h204`
+> (the two multi-document questions) find one of their two documents. The
+> carried 319 questions went down: nDCG@5 0.703 to 0.697, hit@1 0.646 to 0.636
+> and hit@5 0.843 to 0.840. I did not trace which carried questions moved or
+> which new document displaced them, so the cause is unexplained; the new
+> documents share vocabulary with `negative-mining`, `bm25` and `reranking`
+> and are the likeliest competitors, but that is a guess. Unlike the last
+> several increments the new questions did not lift the headline: hybrid
+> scores worse on them than BM25 alone.
+>
+> **Previous increment (fifty-four documents), kept for the record.**
+>
 > `question-answering` (the retriever-reader pipeline, SQuAD and SQuAD 2.0's
 > unanswerable questions, DrQA, Dense Passage Retrieval against BM25, Natural
 > Questions and TriviaQA, exact match and token F1 and their blind spots,
@@ -185,7 +218,8 @@ Current numbers on the bundled corpus and gold set (54 documents, 331 chunks,
 > unexplained. As in the last four increments the gain, if any, comes from
 > easy new questions rather than from the retriever.
 >
-> **Previous increment (fifty-two documents), kept for the record.**
+>
+> **Earlier increment (fifty-two documents), kept for the record.**
 > `interleaving` (A/B tests and why click metrics between two user groups are
 > noisy, Joachims's balanced interleaving, the position-shift bias Radlinski,
 > Kurup and Joachims found in it, team-draft interleaving, probabilistic and
@@ -1084,41 +1118,41 @@ gold-set description above them rather than as a result with its own provenance.
 They were marked stale at 106 questions for two revisions and are current again
 here.
 
-**all (319 questions, 94 with more than one relevant document)**
+**all (327 questions, 96 with more than one relevant document)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.646 | 0.784 | 0.843 | 0.770 | 0.703 | 0.721 |
-| bm25 | 0.649 | 0.784 | **0.859** | **0.778** | **0.707** | 0.725 |
-| vector | **0.661** | **0.787** | 0.840 | 0.762 | 0.705 | **0.728** |
+| hybrid | 0.636 | 0.786 | 0.844 | 0.767 | 0.698 | 0.717 |
+| bm25 | 0.645 | **0.789** | **0.853** | **0.773** | **0.703** | **0.722** |
+| vector | **0.648** | **0.789** | 0.841 | 0.761 | 0.699 | 0.721 |
 
-**easy (121 questions)**
-
-| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | **0.901** | 0.950 | **0.975** | **0.975** | **0.940** | **0.929** |
-| bm25 | 0.893 | **0.959** | **0.975** | **0.975** | 0.937 | 0.924 |
-| vector | **0.901** | 0.950 | 0.967 | 0.967 | 0.935 | 0.924 |
-
-**hard (198 questions, 94 with more than one relevant document)**
+**easy (123 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.490 | 0.682 | 0.763 | 0.645 | 0.558 | 0.594 |
-| bm25 | 0.500 | 0.677 | **0.788** | **0.657** | **0.566** | 0.603 |
-| vector | **0.515** | **0.687** | 0.763 | 0.637 | 0.565 | **0.608** |
+| hybrid | **0.878** | 0.951 | **0.976** | **0.976** | **0.931** | **0.916** |
+| bm25 | 0.870 | **0.959** | **0.976** | **0.976** | 0.928 | 0.912 |
+| vector | **0.878** | 0.951 | 0.967 | 0.967 | 0.926 | 0.912 |
+
+**hard (204 questions, 96 with more than one relevant document)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.490 | 0.686 | 0.765 | 0.641 | 0.557 | 0.596 |
+| bm25 | **0.510** | 0.686 | **0.779** | **0.650** | **0.567** | **0.608** |
+| vector | **0.510** | **0.691** | 0.765 | 0.636 | 0.563 | 0.606 |
 
 **Still no method leads on every column, and the margins are still a handful of
 questions.** (Prose under this table through the end of the section still
-quotes the 263-question run except where a figure is restated here.) At 319
-questions TF-IDF leads hit@1 (0.661), hit@3 (0.787) and MRR (0.728), BM25 leads
-hit@5 (0.859), recall@5 (0.778) and nDCG@5 (0.707), and hybrid leads no
-all-slice column at all: it ties BM25 on hit@3 only before TF-IDF's 0.787, and
-sits 0.004 behind BM25 on nDCG@5. One question is worth 0.0031 on the all
-slice, so every gap in the all-slice table is one to ten questions wide, and
-hybrid's hit@5 (0.843) is five questions behind BM25's 0.859 and one ahead of
-TF-IDF's 0.840. This increment took hybrid's lead on hit@3 away; the move came
-from the carried questions and was not tested.
+quotes the 263-question run except where a figure is restated here.) At 327
+questions BM25 leads hit@3 (0.789, tied with TF-IDF), hit@5 (0.853),
+recall@5 (0.773), nDCG@5 (0.703) and MRR (0.722), TF-IDF leads hit@1
+(0.648), and hybrid leads no all-slice column at all. One question is worth
+0.0031 on the all slice, so every gap in the all-slice table is one to ten
+questions wide: hybrid's hit@5 (0.844) is three questions behind BM25's 0.853
+and one ahead of TF-IDF's 0.841. This increment moved hybrid's hit@1 down
+(0.646 to 0.636) while BM25's barely moved (0.649 to 0.645); the shift came
+mostly from the carried questions and was not tested.
 None of this was tested: the significance, arbitration and corpus-lever
 sections were **not** re-run at 319 questions (see the provenance note), so the
 p_holm and W/L/T figures quoted below belong to 40 documents and 263 questions.
