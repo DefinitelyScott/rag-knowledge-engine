@@ -106,8 +106,8 @@ BM25 ranked list          TF-IDF cosine ranked list    char n-gram list
 | `evals/score_fusion.py` | is the n-gram list's lead an artefact of RRF reading only ranks? CombSUM/CombMNZ against RRF and the n-gram control, with two pre-specified paired tests |
 | `evals/arbitration.py` | audits the ablation table: how often the fused ranking differs from the lists it fuses, and what the difference bought - which separates a fusion that had nothing to do from one whose wins and losses cancelled |
 
-`corpus/` holds the sample knowledge base (sixty-two documents on information
-retrieval). `evals/gold.jsonl` holds 351 labelled questions with
+`corpus/` holds the sample knowledge base (sixty-four documents on information
+retrieval). `evals/gold.jsonl` holds 359 labelled questions with
 the documents that answer them, split into an `easy` and a `hard` slice - a
 hand-assigned split, audited against a measured one in
 [Is the "hard slice" a real slice?](#is-the-hard-slice-a-real-slice-auditing-the-partition-before-the-deltas),
@@ -139,10 +139,10 @@ python evals/robustness.py         # how each method holds up when the query is 
 pytest -q
 ```
 
-Current numbers on the bundled corpus and gold set (62 documents, 386 chunks,
-351 questions, k=5, document-level relevance).
+Current numbers on the bundled corpus and gold set (64 documents, 401 chunks,
+359 questions, k=5, document-level relevance).
 
-> **Provenance.** Recomputed at sixty-two documents and 351 questions: the
+> **Provenance.** Recomputed at sixty-four documents and 359 questions: the
 > header above, the three ablation tables in
 > [the ablation section](#the-ablation-hybrid-against-the-two-lists-it-fuses)
 > and the paragraph directly under them. **Nothing else was re-run.** The
@@ -157,6 +157,56 @@ Current numbers on the bundled corpus and gold set (62 documents, 386 chunks,
 > not appear in the three tables above, or in this note, as 263-question.
 >
 > **This increment grew the corpus by two documents and eight questions.**
+> `code-search` (exact search against semantic search, the trigram index behind
+> regular-expression search over source files, why identifiers need splitting
+> on case and underscores before a lexical index can use them, the
+> vocabulary mismatch between a sentence and a function body, CodeSearchNet and
+> CodeBERT, the docstring-as-query proxy and why it flatters a model, and
+> function against file against syntax-tree chunking) and `table-retrieval`
+> (why a table is not a short document, caption and header fields against cell
+> text, linearisation and TAPAS-style row and column embeddings, why numeric
+> comparisons are beyond a keyword index and need a second stage, and row-group
+> chunking that repeats the header). Both were written from my recollection of
+> the cited work (Cox on Google Code Search; Husain et al. for CodeSearchNet;
+> Feng et al. for CodeBERT; Zhang and Balog on ad hoc table retrieval; Herzig
+> et al. for TAPAS) and were **not** checked against the originals; verify the
+> attributions and qualitative claims before treating this corpus as a citable
+> source. Eight questions (`q130`, `q131`, `h223`-`h228`) were written before
+> anything was scored and none was dropped, relabelled or reworded afterwards.
+> Two are easy, six hard, one of the hard ones multi-document (`h226` pairs
+> `code-search` with `inverted-index`).
+>
+> **Measured effect on hybrid, k=5: flat on the headline.** All-slice nDCG@5
+> 0.694 to 0.694, hit@5 0.838 to 0.841, hit@1 0.641 to 0.638, MRR 0.717 to
+> 0.714. The eight new questions score 0.728 nDCG@5, hit@5 1.000 and hit@1 0.500
+> under hybrid: `q130`, `h226`, `h227` and `h228` put the target at rank 1,
+> `h223` at rank 2, `h224` at rank 3, `h225` at rank 4 and `q131` at rank 5
+> (behind four documents about queries and scoring, the weakest result of the
+> eight). `h226` finds `code-search` at rank 1 and `inverted-index` at rank 4,
+> so both of its documents are in the top five. I did not compute the
+> new-question scores for BM25 or TF-IDF, so I make no claim about whether the
+> three methods separate on them. The carried 351 questions kept hit@5 at
+> 0.838 and hit@1 at 0.641, while nDCG@5 fell from 0.694 to 0.693.
+>
+> **Trace of the carried questions.** Hybrid's top-5 document list for every
+> carried question, saved before and after. 134 of 351 lists changed. A new
+> document entered the top five of 49 of them (`code-search` 32,
+> `table-retrieval` 18; one got both). Net carried hit@5 was unchanged, but two
+> questions were lost and two gained: `h104` and `h134` lost their
+> `generative-retrieval` and `rag` documents at rank 5 to `fairness-in-ranking`
+> and `generative-retrieval` respectively (both existing documents; neither new
+> document appears in either list), while `h171` and `h196` gained one at rank
+> 5. `h104` and `h196` are the same two questions that flipped the other way
+> last increment (`h104` gained then, `h196` lost then), so both have now
+> flipped straight back. Rank-5 churn in opposite directions that cancels is
+> the pattern every recent increment has shown, and the reason not to read a
+> one- or two-question move in hit@5 as an effect of anything. Note also that
+> BM25 now ties hybrid on hit@3, hit@5 and recall@5 on the all slice, where
+> last increment it led hit@5 by three questions: a tie at one revision and a
+> lead at the previous one is the same noise, not a change in the methods.
+>
+> **Previous increment (sixty-two documents), kept for the record.**
+>
 > `hubness` (the k-occurrence as the measure, the right-skewed distribution
 > with a few hubs and many anti-hubs as dimensionality grows, concentration of
 > distances and geometric centrality as the cause, why a hub is not a better
@@ -1264,46 +1314,48 @@ gold-set description above them rather than as a result with its own provenance.
 They were marked stale at 106 questions for two revisions and are current again
 here.
 
-**all (351 questions, 102 with more than one relevant document)**
+**all (359 questions, 103 with more than one relevant document)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.641 | 0.783 | 0.838 | 0.756 | 0.694 | 0.717 |
-| bm25 | 0.644 | 0.783 | **0.846** | **0.767** | **0.699** | 0.718 |
-| vector | **0.650** | 0.783 | 0.838 | 0.756 | 0.697 | **0.723** |
+| hybrid | 0.638 | **0.780** | **0.841** | **0.764** | 0.694 | 0.714 |
+| bm25 | 0.635 | **0.780** | **0.841** | **0.764** | 0.694 | 0.713 |
+| vector | **0.643** | 0.777 | 0.838 | 0.760 | **0.697** | **0.719** |
 
-**easy (129 questions)**
-
-| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
-| --- | --- | --- | --- | --- | --- | --- |
-| hybrid | **0.884** | 0.953 | **0.977** | **0.977** | **0.934** | **0.920** |
-| bm25 | 0.876 | **0.961** | **0.977** | **0.977** | 0.932 | 0.917 |
-| vector | 0.876 | 0.953 | 0.969 | 0.969 | 0.926 | 0.912 |
-
-**hard (222 questions, 102 with more than one relevant document)**
+**easy (131 questions)**
 
 | method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
 | --- | --- | --- | --- | --- | --- | --- |
-| hybrid | 0.500 | **0.685** | 0.757 | 0.628 | 0.555 | 0.598 |
-| bm25 | 0.509 | 0.680 | **0.770** | **0.645** | **0.564** | 0.603 |
-| vector | **0.518** | **0.685** | 0.761 | 0.632 | **0.564** | **0.612** |
+| hybrid | **0.878** | **0.947** | **0.977** | **0.977** | **0.931** | **0.915** |
+| bm25 | 0.870 | **0.947** | **0.977** | **0.977** | 0.929 | 0.912 |
+| vector | **0.878** | **0.947** | 0.969 | 0.969 | 0.927 | 0.913 |
+
+**hard (228 questions, 103 with more than one relevant document)**
+
+| method | hit@1 | hit@3 | hit@5 | recall@5 | nDCG@5 | MRR |
+| --- | --- | --- | --- | --- | --- | --- |
+| hybrid | 0.500 | **0.684** | **0.763** | **0.641** | 0.558 | 0.598 |
+| bm25 | 0.500 | **0.684** | **0.763** | **0.641** | 0.560 | 0.598 |
+| vector | **0.509** | 0.680 | **0.763** | 0.640 | **0.564** | **0.607** |
 
 **Still no method leads on every column, and the margins are still a handful of
 questions.** (Prose under this table through the end of the section still
-quotes the 263-question run except where a figure is restated here.) At 351
-questions BM25 leads hit@5 (0.846), recall@5 (0.767) and nDCG@5 (0.699),
-TF-IDF leads hit@1 (0.650) and MRR (0.723), and all three methods tie on hit@3
-(0.783). Hybrid leads no all-slice column outright; it shares the hit@3 tie and
-the hit@5 figure with TF-IDF (0.838). One question is worth 0.0028 on the all
-slice, so every gap in the all-slice table is one to six questions wide:
-hybrid's hit@5 (0.838, 294 questions) is three questions behind BM25's 0.846
-and level with TF-IDF's 0.838. This increment moved hybrid's nDCG@5 down
-(0.697 to 0.694) and its MRR down (0.719 to 0.717) with hit@5 up by one
-question's worth (0.837 to 0.838); the carried questions' drift is traced in
-the provenance note above. The differences between methods were not tested.
-None of this was tested: the significance, arbitration and corpus-lever
-sections were **not** re-run at 351 questions (see the provenance note), so the
-p_holm and W/L/T figures quoted below belong to 40 documents and 263 questions.
+quotes the 263-question run except where a figure is restated here.) At 359
+questions TF-IDF leads hit@1 (0.643), nDCG@5 (0.697) and MRR (0.719), while
+hybrid and BM25 tie exactly on hit@3 (0.780), hit@5 (0.841) and recall@5
+(0.764), and also on nDCG@5 (0.694). One question is worth 0.0028 on the all
+slice, so every gap in the all-slice table is one to three questions wide:
+hybrid's hit@1 (0.638, 229 questions) is two questions behind TF-IDF's 0.643
+and one ahead of BM25's 0.635. Last increment BM25 led hit@5 by three
+questions; this one it ties hybrid. This increment left hybrid's nDCG@5
+unchanged (0.694 to 0.694), moved its MRR down (0.717 to 0.714) and its hit@5
+up by about one question's worth (0.838 to 0.841), all of which comes from the
+eight new questions, which all land in the top five; the carried questions' drift is
+traced in the provenance note above. The differences between methods were not
+tested. None of this was tested: the significance, arbitration and
+corpus-lever sections were **not** re-run at 359 questions (see the provenance
+note), so the p_holm and W/L/T figures quoted below belong to 40 documents and
+263 questions.
 
 The easy slice is still the less informative half. Every question on it has
 exactly one relevant document, which makes recall@k numerically identical to
